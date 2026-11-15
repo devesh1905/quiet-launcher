@@ -1,5 +1,9 @@
 package app.quiet.launcher.feature.focus.settings
 
+import app.quiet.launcher.core.platform.rememberAppCategories
+import app.quiet.launcher.designsystem.AppPreset
+import app.quiet.launcher.designsystem.PresetChips
+import app.quiet.launcher.designsystem.presetsFor
 import android.app.NotificationManager
 import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
@@ -48,9 +52,11 @@ fun FocusSessionStart(onBack: () -> Unit, onStarted: () -> Unit = {}) {
     var query by rememberSaveable { mutableStateOf("") }
     val collator = remember { java.text.Collator.getInstance().apply { strength = java.text.Collator.PRIMARY } }
     val sorted = remember(apps) { apps.sortedWith { a, b -> collator.compare(a.label, b.label) } }
-    val list = remember(sorted, query) {
+    var preset by remember { mutableStateOf<AppPreset>(AppPreset.All) }
+    val cats = rememberAppCategories(apps.map { it.pkg })
+    val list = remember(sorted, query, preset, cats) {
         val q = query.trim()
-        if (q.isEmpty()) sorted else sorted.filter { it.label.contains(q, ignoreCase = true) }
+        sorted.filter { (q.isEmpty() || it.label.contains(q, ignoreCase = true)) && preset.matches(cats[it.pkg]) }
     }
 
     val running = snap.session?.takeIf { it.endsMs > System.currentTimeMillis() }
@@ -93,6 +99,11 @@ fun FocusSessionStart(onBack: () -> Unit, onStarted: () -> Unit = {}) {
             SectionTitle("Apps you may open")
             Note("Everything else stays closed until the session ends. Your phone app and Quiet always stay open.")
             LineField(query, "Search apps", { query = it.take(40) }, Modifier.padding(horizontal = ListGutter).padding(top = 8.dp, bottom = 4.dp), QType.body(17.sp))
+            PresetChips(
+                presetsFor(cats), preset, { preset = it }, Modifier.padding(top = 8.dp), gutter = ListGutter,
+                selectAllLabel = "Allow all ${list.size}",
+                onSelectAll = { allowed = (allowed + list.map { it.pkg }).distinct() },
+            )
             if (allowed.isNotEmpty()) {
                 Note("${allowed.size} chosen")
             }

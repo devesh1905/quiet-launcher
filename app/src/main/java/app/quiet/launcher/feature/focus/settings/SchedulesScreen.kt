@@ -1,5 +1,9 @@
 package app.quiet.launcher.feature.focus.settings
 
+import app.quiet.launcher.core.platform.rememberAppCategories
+import app.quiet.launcher.designsystem.AppPreset
+import app.quiet.launcher.designsystem.PresetChips
+import app.quiet.launcher.designsystem.presetsFor
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -205,9 +209,11 @@ private fun ScheduleEditor(initial: Schedule, isNew: Boolean, onBack: () -> Unit
     var query by remember { mutableStateOf("") }
     val apps = rememberApps()
     val week = rememberWeekUsage()
-    val list = remember(apps, week, query) {
+    var preset by remember { mutableStateOf<AppPreset>(AppPreset.All) }
+    val cats = rememberAppCategories(apps.map { it.pkg })
+    val list = remember(apps, week, query, preset, cats) {
         val q = query.trim().lowercase()
-        apps.filter { q.isEmpty() || it.label.lowercase().contains(q) }
+        apps.filter { (q.isEmpty() || it.label.lowercase().contains(q)) && preset.matches(cats[it.pkg]) }
             .sortedWith(compareByDescending<AppItem> { week[it.pkg] ?: 0L }.thenBy { it.label.lowercase() })
     }
     FocusScreen(if (isNew) "New schedule" else "Edit schedule", onBack) {
@@ -232,6 +238,11 @@ private fun ScheduleEditor(initial: Schedule, isNew: Boolean, onBack: () -> Unit
             SectionTitle("Block these apps")
             Note("Sorted by screen time in the last 7 days.")
             SearchField(query, "Search apps", { query = it }, Modifier.padding(bottom = 8.dp))
+            PresetChips(
+                presetsFor(cats), preset, { preset = it }, Modifier.padding(bottom = 8.dp), gutter = ListGutter,
+                selectAllLabel = "Block all ${list.size}",
+                onSelectAll = { s = s.copy(apps = s.apps + list.map { it.pkg }) },
+            )
         }
         items(list, key = { it.pkg }) { app ->
             AppCheckRow(app.label, weekLine(week[app.pkg])?.substringBefore(" in the last"), app.pkg in s.apps) {

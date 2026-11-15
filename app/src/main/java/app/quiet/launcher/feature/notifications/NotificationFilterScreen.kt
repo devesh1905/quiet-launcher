@@ -1,5 +1,9 @@
 package app.quiet.launcher.feature.notifications
 
+import app.quiet.launcher.core.platform.rememberAppCategories
+import app.quiet.launcher.designsystem.AppPreset
+import app.quiet.launcher.designsystem.PresetChips
+import app.quiet.launcher.designsystem.presetsFor
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -138,12 +142,15 @@ fun NotificationFilterScreen(onBack: () -> Unit) {
 
     val groups = remember(held) { held.groupBy { it.packageName to it.userSerial }.values.toList() }
     val defaults = remember { filter.defaultAllowed() }
-    val listApps = remember(apps, query) {
+    var preset by remember { mutableStateOf<AppPreset>(AppPreset.All) }
+    val allPkgs = remember(apps) { apps.map { it.key.packageName }.distinct() }
+    val cats = rememberAppCategories(allPkgs)
+    val listApps = remember(apps, query, preset, cats) {
         val q = query.trim()
         apps.asSequence()
             .filter { it.key.packageName != ctx.packageName && it.key.packageName !in NotificationRules.alwaysPassed }
             .distinctBy { it.key.packageName }
-            .filter { q.isEmpty() || it.label.contains(q, ignoreCase = true) }
+            .filter { (q.isEmpty() || it.label.contains(q, ignoreCase = true)) && preset.matches(cats[it.key.packageName]) }
             .toList()
     }
 
@@ -258,6 +265,11 @@ fun NotificationFilterScreen(onBack: () -> Unit) {
             } else {
                 item(key = "search") {
                     SearchField(query, "Search apps") { query = it }
+                    PresetChips(
+                        presetsFor(cats), preset, { preset = it }, Modifier.padding(top = 8.dp), gutter = Gutter,
+                        selectAllLabel = "Hold all ${listApps.size}",
+                        onSelectAll = { scope.launch { listApps.forEach { filter.setAllowed(it.key.packageName, false) } } },
+                    )
                     Txt(
                         if (settings.enabled) "Allow notifications from" else "Allow notifications from. These apply once holding is on.",
                         QType.secondary(), c.muted, Modifier.padding(horizontal = Gutter).padding(top = 8.dp, bottom = 8.dp),

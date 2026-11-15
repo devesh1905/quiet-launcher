@@ -1,5 +1,9 @@
 package app.quiet.launcher.feature.monochrome
 
+import app.quiet.launcher.core.platform.rememberAppCategories
+import app.quiet.launcher.designsystem.AppPreset
+import app.quiet.launcher.designsystem.PresetChips
+import app.quiet.launcher.designsystem.presetsFor
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -81,10 +85,12 @@ fun MonochromeScreen(onBack: () -> Unit) {
         apps.distinctBy { it.key.packageName }.map { it.key.packageName to it.systemLabel.ifBlank { it.label } }
     }
     val labels = remember(apps) { apps.associate { it.key.packageName to it.label } }
-    val filtered = remember(packages, query, labels) {
+    var preset by remember { mutableStateOf<AppPreset>(AppPreset.All) }
+    val cats = rememberAppCategories(packages.map { it.first })
+    val filtered = remember(packages, query, labels, preset, cats) {
         val q = query.trim()
         packages.map { (pkg, _) -> pkg to (labels[pkg] ?: pkg) }
-            .filter { q.isEmpty() || it.second.contains(q, ignoreCase = true) }
+            .filter { (q.isEmpty() || it.second.contains(q, ignoreCase = true)) && preset.matches(cats[it.first]) }
     }
 
     Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
@@ -159,6 +165,11 @@ fun MonochromeScreen(onBack: () -> Unit) {
                     QType.secondary(), Q.colors.muted, Modifier.padding(horizontal = Gutter).padding(bottom = 12.dp),
                 )
                 SearchField(query) { query = it }
+                PresetChips(
+                    presetsFor(cats), preset, { preset = it }, Modifier.padding(vertical = 8.dp), gutter = Gutter,
+                    selectAllLabel = "Grey for all ${filtered.size}",
+                    onSelectAll = { update { it.copy(selectedEnabled = true, selectedPackages = it.selectedPackages + filtered.map { p -> p.first }) } },
+                )
                 Hairline()
             }
 

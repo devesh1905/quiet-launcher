@@ -1,5 +1,9 @@
 package app.quiet.launcher.feature.focus.settings
 
+import app.quiet.launcher.core.platform.rememberAppCategories
+import app.quiet.launcher.designsystem.AppPreset
+import app.quiet.launcher.designsystem.PresetChips
+import app.quiet.launcher.designsystem.presetsFor
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -69,9 +73,11 @@ fun FocusSettingsScreen(
         appScope.launch { rt.repo.updateRule(pkg, t) }
     }
 
-    val list = remember(apps, week, query) {
+    var preset by remember { mutableStateOf<AppPreset>(AppPreset.All) }
+    val cats = rememberAppCategories(apps.map { it.pkg })
+    val list = remember(apps, week, query, preset, cats) {
         val q = query.trim().lowercase()
-        apps.filter { q.isEmpty() || it.label.lowercase().contains(q) }
+        apps.filter { (q.isEmpty() || it.label.lowercase().contains(q)) && preset.matches(cats[it.pkg]) }
             .sortedWith(compareByDescending<AppItem> { week[it.pkg] ?: 0L }.thenBy { it.label.lowercase() })
     }
 
@@ -136,6 +142,11 @@ fun FocusSettingsScreen(
             SectionTitle("Apps")
             Note("On by default for social, video and game apps. Tap an app for its own pause and daily limit.")
             SearchField(query, "Search apps", { query = it }, Modifier.padding(bottom = 8.dp))
+            PresetChips(
+                presetsFor(cats), preset, { preset = it }, Modifier.padding(bottom = 8.dp), gutter = ListGutter,
+                selectAllLabel = "Remind me for all ${list.size}",
+                onSelectAll = { list.forEach { a -> setRule(a.pkg) { it.copy(reminder = true) } } },
+            )
         }
 
         items(list, key = { it.pkg }) { app ->
