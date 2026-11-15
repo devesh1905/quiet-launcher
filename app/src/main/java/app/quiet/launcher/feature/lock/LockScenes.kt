@@ -419,7 +419,7 @@ fun paintingPalette(b: Bitmap): IntArray {
 
 /**
  * A picture light passing over the glass: a soft diagonal sheen crosses the frame once when the
- * work is hung (and when it changes), then every 12 s or so, very faintly.
+ * work is hung (and when it changes), then every 6–7 s, faintly.
  */
 fun Modifier.frameLightSweep(animate: Boolean, key: Any?): Modifier = composed {
     val sweep = remember { androidx.compose.animation.core.Animatable(-0.4f) }
@@ -428,7 +428,8 @@ fun Modifier.frameLightSweep(animate: Boolean, key: Any?): Modifier = composed {
         while (true) {
             sweep.snapTo(-0.4f)
             sweep.animateTo(1.4f, androidx.compose.animation.core.tween(2600, easing = QMotion.EaseInOutSine))
-            kotlinx.coroutines.delay(12_000)
+            // Rest 3.5–5 s (a sweep every ~6–7.6 s); the small variation keeps it feeling like real light.
+            kotlinx.coroutines.delay(3_500L + kotlin.random.Random.nextLong(1_500L))
         }
     }
     drawWithContent {

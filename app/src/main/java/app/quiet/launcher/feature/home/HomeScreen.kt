@@ -30,6 +30,7 @@ import app.quiet.launcher.designsystem.*
 import app.quiet.launcher.designsystem.shader.AmbientField
 import app.quiet.launcher.feature.player.NowPlayingCard
 import app.quiet.launcher.feature.player.PlayerScreen
+import app.quiet.launcher.feature.quick.FocusHome
 import kotlinx.coroutines.launch
 
 /**
@@ -45,9 +46,21 @@ fun HomeScreen(
     onPlayerOpenChange: (Boolean) -> Unit,
     /** False while another page is in front: the colour field stops rendering (it was competing with list scrolling). */
     isActive: Boolean = true,
+    onOpenFocusSetup: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val container = ctx.container
+    // A running focus session takes over Home.
+    val focusRt = remember { app.quiet.launcher.feature.focus.FocusRuntime.get(ctx) }
+    val focusSnap by focusRt.repo.snapshot.collectAsStateWithLifecycle()
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val session = focusSnap.session?.takeIf { it.endsMs > nowMs }
+    LaunchedEffect(focusSnap.session?.endsMs) {
+        val ends = focusSnap.session?.endsMs ?: return@LaunchedEffect
+        nowMs = System.currentTimeMillis()
+        if (ends > nowMs) { kotlinx.coroutines.delay(ends - nowMs + 50); nowMs = System.currentTimeMillis() }
+    }
+    var quickMenu by remember { mutableStateOf(false) }
     val settings by container.settings.settings.collectAsStateWithLifecycle()
     val favourites by container.apps.favourites.collectAsStateWithLifecycle(emptyList())
     val usage by container.usage.today.collectAsStateWithLifecycle()
@@ -90,6 +103,22 @@ fun HomeScreen(
                 running = isActive && awake && nowPlaying?.isPlaying == true && !playerOpen,
                 fps = 12, resolution = 0.33f,
             )
+            // Home <-> focus Home: the clock morphs into the countdown (shared bounds), the rest of
+            // Home sinks back and fades while the focus content rises in behind the clock.
+            AnimatedContent(
+                targetState = session,
+                contentKey = { it != null },
+                transitionSpec = {
+                    val toFocus = targetState != null
+                    (fadeIn(tween(420, 120, QMotion.EaseOutQuiet)) +
+                        scaleIn(spring(dampingRatio = 0.86f, stiffness = 240f), initialScale = if (toFocus) 1.03f else 0.97f)) togetherWith
+                        (fadeOut(tween(240)) + scaleOut(tween(320, easing = QMotion.EaseOutQuiet), targetScale = if (toFocus) 0.94f else 1.03f))
+                },
+                label = "focusHome",
+            ) { s ->
+              if (s != null) {
+                with(this@SharedTransitionLayout) { FocusHome(s, this@AnimatedContent) }
+              } else {
             HomeContent(
                 minute = minute, is24h = is24h, batteryLevel = battery.level, charging = battery.charging,
                 usage = usage, usagePerm = usagePerm, showUsage = settings.showUsageOnHome, favourites = favourites,
@@ -103,6 +132,14 @@ fun HomeScreen(
                 onAppLongPress = onAppLongPress,
                 swipeUp = settings.swipeUpSearch, swipeDown = settings.swipeDownNotifications,
                 sharedScope = this@SharedTransitionLayout,
+                contentScope = this@AnimatedContent,
+                onClockLongPress = { quickMenu = true },
+            )
+              }
+            }
+            app.quiet.launcher.feature.quick.QuickActionsSheet(
+                visible = quickMenu, onDismiss = { quickMenu = false },
+                onOpenFocusSetup = onOpenFocusSetup, onOpenUsage = onOpenUsage,
             )
             AnimatedVisibility(
                 visible = playerOpen && nowPlaying != null,
@@ -160,6 +197,8 @@ private fun HomeContent(
     onLaunch: (AppEntry) -> Unit, onAppLongPress: (AppEntry) -> Unit,
     swipeUp: Boolean, swipeDown: Boolean,
     sharedScope: SharedTransitionScope,
+    contentScope: AnimatedVisibilityScope? = null,
+    onClockLongPress: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val c = Q.colors
@@ -190,10 +229,21 @@ private fun HomeContent(
     ) {
         Spacer(Modifier.height(56.dp))
         // Clock: tap for alarms.
+        // Clock: tap for alarms, hold for quick focus actions. It morphs into the focus countdown.
         BasicText(
             Format.clock(minute, is24h),
             style = QType.clock(112.sp).copy(color = c.ink),
-            modifier = Modifier.pressable(pressedScale = 0.99f, pressedAlpha = 0.7f) { SystemActions.alarms(ctx) },
+            modifier = Modifier
+                .then(
+                    if (contentScope != null) with(sharedScope) {
+                        Modifier.sharedBounds(
+                            rememberSharedContentState(app.quiet.launcher.feature.quick.ClockKey), contentScope,
+                            boundsTransform = { _, _ -> spring(dampingRatio = 0.85f, stiffness = 300f) },
+                            resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds(),
+                        )
+                    } else Modifier
+                )
+                .pressable(pressedScale = 0.99f, pressedAlpha = 0.7f, onLongPress = onClockLongPress) { SystemActions.alarms(ctx) },
         )
         Spacer(Modifier.height(18.dp))
         BasicText(Format.longDate(minute), style = QType.body(17.sp).copy(color = c.muted))

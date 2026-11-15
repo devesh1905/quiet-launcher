@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** Line icons in the Lucide stroke style (1.5 stroke, round caps), drawn on a 24-unit grid. */
-enum class QIcon { Camera, Phone, Prev, Next, Play, Pause, ChevronDown, ChevronLeft, Search, Settings }
+enum class QIcon { Camera, Phone, Prev, Next, Play, Pause, ChevronDown, ChevronLeft, ChevronRight, Search, Settings }
 
 @Composable
 fun QIconView(icon: QIcon, tint: Color, modifier: Modifier = Modifier, size: Dp = 24.dp, stroke: Float = 1.5f) {
@@ -67,6 +67,7 @@ fun QIconView(icon: QIcon, tint: Color, modifier: Modifier = Modifier, size: Dp 
             }
             QIcon.ChevronDown -> drawPath(p(6f, 9f, 12f, 15f, 18f, 9f), tint, style = st)
             QIcon.ChevronLeft -> drawPath(p(15f, 6f, 9f, 12f, 15f, 18f), tint, style = st)
+            QIcon.ChevronRight -> drawPath(p(9f, 6f, 15f, 12f, 9f, 18f), tint, style = st)
             QIcon.Search -> {
                 drawCircle(tint, 7f * u, Offset(11f * u, 11f * u), style = st)
                 drawLine(tint, Offset(16.2f * u, 16.2f * u), Offset(21f * u, 21f * u), st.width, StrokeCap.Round)

@@ -111,7 +111,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
     val scope = rememberCoroutineScope()
-    val pager = rememberPagerState { 2 }
+    // Pages: 0 Focus, 1 Home, 2 All apps. Home is in the middle.
+    val pager = rememberPagerState(initialPage = 1) { 3 }
     var overlay by remember { mutableStateOf(Overlay.None) }
     var focusSearch by remember { mutableStateOf(false) }
     var playerOpen by remember { mutableStateOf(false) }
@@ -123,15 +124,16 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
     LaunchedEffect(homeSignal) {
         if (homeSignal > 0) {
             overlay = Overlay.None; playerOpen = false; sheetApp = null
-            pager.animateScrollToPage(0, animationSpec = spring(dampingRatio = 1f, stiffness = 500f))
+            pager.animateScrollToPage(1, animationSpec = spring(dampingRatio = 1f, stiffness = 500f))
         }
     }
     LaunchedEffect(openNotifications) { if (openNotifications > 0) overlay = Overlay.Notifications }
     val settings by ctx.container.settings.settings.collectAsStateWithLifecycle()
     LaunchedEffect(settings.lockEnabled) { app.quiet.launcher.service.LockService.startIfEnabled(ctx) }
-    BackHandler(enabled = pager.currentPage == 1 && overlay == Overlay.None) {
-        scope.launch { pager.animateScrollToPage(0) }
+    BackHandler(enabled = pager.currentPage != 1 && overlay == Overlay.None) {
+        scope.launch { pager.animateScrollToPage(1) }
     }
+    fun openFrom(o: Overlay, back: Overlay = Overlay.None) { overlayBack = back; overlay = o }
 
     Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
         HorizontalPager(state = pager, beyondViewportPageCount = 1, modifier = Modifier.fillMaxSize(), userScrollEnabled = !playerOpen) { page ->
@@ -144,21 +146,28 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
                 scaleX = s; scaleY = s
             }) {
                 if (page == 0) {
+                    app.quiet.launcher.feature.quick.FocusPage(
+                        onOpenFocusSetup = { openFrom(Overlay.FocusSession) },
+                        onOpenUsage = { openFrom(Overlay.Usage) },
+                        onOpenSchedules = { openFrom(Overlay.Schedules) },
+                    )
+                } else if (page == 1) {
                     HomeScreen(
-                        onOpenSearch = { focusSearch = true; scope.launch { pager.animateScrollToPage(1) } },
+                        onOpenSearch = { focusSearch = true; scope.launch { pager.animateScrollToPage(2) } },
                         onOpenUsage = { overlay = Overlay.Usage },
+                        onOpenFocusSetup = { openFrom(Overlay.FocusSession) },
                         onAppLongPress = { sheetApp = it },
                         playerOpen = playerOpen,
                         onPlayerOpenChange = { playerOpen = it },
-                        isActive = pager.targetPage == 0,
+                        isActive = pager.targetPage == 1,
                     )
                 } else {
                     AppsScreen(
-                        isActive = pager.settledPage == 1,
-                        focusSearch = focusSearch && pager.currentPage == 1,
+                        isActive = pager.settledPage == 2,
+                        focusSearch = focusSearch && pager.currentPage == 2,
                         onFocusConsumed = { focusSearch = false },
                         onOpenSettings = { overlay = Overlay.Settings },
-                        onBack = { scope.launch { pager.animateScrollToPage(0) } },
+                        onBack = { scope.launch { pager.animateScrollToPage(1) } },
                         onAppLongPress = { sheetApp = it },
                     )
                 }
@@ -185,28 +194,28 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
                         onOpenMonochrome = { overlay = Overlay.Monochrome },
                         onOpenHidden = { overlay = Overlay.Hidden },
                         onOpenFocus = { overlay = Overlay.Focus },
-                        onOpenSchedules = { overlay = Overlay.Schedules },
-                        onOpenFocusSession = { overlay = Overlay.FocusSession },
+                        onOpenSchedules = { openFrom(Overlay.Schedules, Overlay.Settings) },
+                        onOpenFocusSession = { openFrom(Overlay.FocusSession, Overlay.Settings) },
                         onOpenPrecision = { overlay = Overlay.Precision },
                     )
                 }
                 Overlay.Focus -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
                     app.quiet.launcher.feature.focus.settings.FocusSettingsScreen(
                         onBack = { overlay = Overlay.Settings },
-                        onOpenSchedules = { overlay = Overlay.Schedules },
+                        onOpenSchedules = { openFrom(Overlay.Schedules, Overlay.Settings) },
                         onOpenBlockApp = { p -> blockPkg = p; overlayBack = Overlay.Focus; overlay = Overlay.BlockApp },
                         onOpenPrecisionMode = { overlay = Overlay.Precision },
-                        onOpenFocusSession = { overlay = Overlay.FocusSession },
+                        onOpenFocusSession = { openFrom(Overlay.FocusSession, Overlay.Settings) },
                     )
                 }
                 Overlay.Schedules -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
-                    app.quiet.launcher.feature.focus.settings.SchedulesScreen(onBack = { overlay = Overlay.Settings })
+                    app.quiet.launcher.feature.focus.settings.SchedulesScreen(onBack = { overlay = if (overlayBack == Overlay.None) Overlay.None else Overlay.Settings; overlayBack = Overlay.Settings })
                 }
                 Overlay.Precision -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
                     app.quiet.launcher.feature.focus.settings.PrecisionModeScreen(onBack = { overlay = Overlay.Settings })
                 }
                 Overlay.FocusSession -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
-                    app.quiet.launcher.feature.focus.settings.FocusSessionStart(onBack = { overlay = Overlay.Settings }, onStarted = { overlay = Overlay.None })
+                    app.quiet.launcher.feature.focus.settings.FocusSessionStart(onBack = { overlay = if (overlayBack == Overlay.None) Overlay.None else Overlay.Settings; overlayBack = Overlay.Settings }, onStarted = { overlay = Overlay.None; overlayBack = Overlay.Settings })
                 }
                 Overlay.BlockApp -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
                     blockPkg?.let { p -> app.quiet.launcher.feature.focus.settings.BlockAppScreen(p, onBack = { overlay = overlayBack }) }

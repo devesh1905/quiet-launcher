@@ -121,6 +121,17 @@
             <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED" /></intent-filter>
         </receiver>
 
+        <service android:name=".feature.quick.FocusTileService" android:exported="true"
+            android:label="Focus" android:icon="@drawable/ic_tile_focus"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service android:name=".feature.quick.GrayscaleTileService" android:exported="true"
+            android:label="Grayscale" android:icon="@drawable/ic_tile_grayscale"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+
         <!-- adb-only set-up commands: only the shell/system hold DUMP. -->
         <receiver
             android:name=".service.ShellCommandReceiver"

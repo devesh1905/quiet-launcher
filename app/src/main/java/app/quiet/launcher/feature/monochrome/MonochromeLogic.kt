@@ -7,6 +7,8 @@ data class MonochromeConfig(
     val windDownEnabled: Boolean = false,
     val windDownStartMin: Int = 22 * 60,
     val windDownEndMin: Int = 6 * 60,
+    /** Grayscale on everywhere until this wall-clock time (quick action), 0 = off. */
+    val manualUntilMs: Long = 0L,
 )
 
 /** True when [nowMin] lies in [startMin, endMin); the window may wrap past midnight. Equal bounds mean empty. */
@@ -17,7 +19,8 @@ fun inWindDown(startMin: Int, endMin: Int, nowMin: Int): Boolean = when {
 }
 
 /** Pure decision: should the display be grayscale right now? */
-fun shouldBeMonochrome(config: MonochromeConfig, foreground: String?, nowMin: Int): Boolean {
+fun shouldBeMonochrome(config: MonochromeConfig, foreground: String?, nowMin: Int, nowMs: Long = 0L): Boolean {
+    if (nowMs > 0L && nowMs < config.manualUntilMs) return true
     if (config.windDownEnabled && inWindDown(config.windDownStartMin, config.windDownEndMin, nowMin)) return true
     if (config.selectedEnabled && foreground != null && foreground in config.selectedPackages) return true
     return false

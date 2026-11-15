@@ -51,6 +51,7 @@ class MonochromeStore(context: Context, scope: CoroutineScope) {
         val weTurnedOn = booleanPreferencesKey("weTurnedOn")
         val prevEnabled = intPreferencesKey("prevEnabled")
         val prevMode = intPreferencesKey("prevMode")
+        val manualUntil = androidx.datastore.preferences.core.longPreferencesKey("manualUntil")
     }
 
     private fun Preferences.toConfig(): MonochromeConfig {
@@ -61,6 +62,7 @@ class MonochromeStore(context: Context, scope: CoroutineScope) {
             windDownEnabled = this[K.windDown] ?: d.windDownEnabled,
             windDownStartMin = this[K.start] ?: d.windDownStartMin,
             windDownEndMin = this[K.end] ?: d.windDownEndMin,
+            manualUntilMs = this[K.manualUntil] ?: d.manualUntilMs,
         )
     }
 
@@ -77,6 +79,7 @@ class MonochromeStore(context: Context, scope: CoroutineScope) {
             p[K.windDown] = n.windDownEnabled
             p[K.start] = n.windDownStartMin
             p[K.end] = n.windDownEndMin
+            p[K.manualUntil] = n.manualUntilMs
         }
     }
 
@@ -132,7 +135,7 @@ class MonochromeController(context: Context, private val scope: CoroutineScope) 
                 // Per-app grayscale needs the foreground app even when precision mode is off.
                 (app.container.foreground as? app.quiet.launcher.feature.focus.ForegroundTrackerImpl)
                     ?.setNeeded("monochrome", c.selectedEnabled && c.selectedPackages.isNotEmpty())
-                shouldBeMonochrome(c, fg, now)
+                shouldBeMonochrome(c, fg, now, System.currentTimeMillis())
             }.distinctUntilChanged().debounce(300).collect { apply(it) }
         }
     }

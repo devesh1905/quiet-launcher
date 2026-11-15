@@ -38,7 +38,7 @@ fun FocusSessionStart(onBack: () -> Unit, onStarted: () -> Unit = {}) {
     val week = rememberWeekUsage()
     var intention by rememberSaveable { mutableStateOf("") }
     var minutes by rememberSaveable { mutableIntStateOf(50) }
-    var allowed by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var allowed by rememberSaveable { mutableStateOf(app.quiet.launcher.feature.quick.QuickActions.lastAllowed(ctx).toList()) }
     var dnd by rememberSaveable { mutableStateOf(true) }
     var policy by remember { mutableStateOf(hasPolicyAccess(ctx)) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { policy = hasPolicyAccess(ctx) }
@@ -105,6 +105,7 @@ fun FocusSessionStart(onBack: () -> Unit, onStarted: () -> Unit = {}) {
         item {
             Column(Modifier.padding(horizontal = ListGutter).padding(top = 28.dp)) {
                 SolidButton("Start ${FocusCopy.duration(minutes * 60_000L)}") {
+                    app.quiet.launcher.feature.quick.QuickActions.rememberAllowed(ctx, allowed.toSet())
                     rt.startSession(minutes, intention, allowed.toSet(), dnd && policy)
                     onStarted()
                 }
