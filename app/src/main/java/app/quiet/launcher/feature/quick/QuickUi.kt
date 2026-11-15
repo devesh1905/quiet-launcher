@@ -96,7 +96,34 @@ fun QuickActionList(onOpenFocusSetup: () -> Unit, onOpenUsage: () -> Unit, onAft
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             listOf(25, 50, 90).forEach { m -> DurationChip(m, minutes == m) { minutes = m } }
         }
-        Spacer(Modifier.height(14.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            app.quiet.launcher.feature.focus.ui.StepButton(plus = false, label = "Shorter") {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                minutes = (minutes - 5).coerceAtLeast(5)
+            }
+            AnimatedContent(
+                targetState = minutes,
+                modifier = Modifier.weight(1f),
+                transitionSpec = {
+                    val up = targetState > initialState
+                    (slideInVertically(spring(0.85f, 500f)) { if (up) it / 2 else -it / 2 } + fadeIn(tween(160))) togetherWith
+                        (slideOutVertically(spring(1f, 600f)) { if (up) -it / 2 else it / 2 } + fadeOut(tween(120)))
+                },
+                contentAlignment = Alignment.Center,
+                label = "minutes",
+            ) { m ->
+                BasicText(
+                    app.quiet.launcher.feature.focus.ui.FocusCopy.duration(m * 60_000L),
+                    style = QType.number(26.sp).copy(color = c.ink, textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            app.quiet.launcher.feature.focus.ui.StepButton(plus = true, label = "Longer") {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                minutes = (minutes + 5).coerceAtMost(240)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
         Box(
             Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(28.dp)).background(c.ink)
                 .pressable(pressedScale = 0.97f) {
