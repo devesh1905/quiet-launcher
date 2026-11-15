@@ -47,6 +47,10 @@ the lock screen is a painting, not a notification wall. There are no streaks, po
 - Works two ways: as the **system lock-screen wallpaper** (your phone keeps its own clock and fingerprint unlock) or as **Quiet's own lock screen** with an interactive music player
 
 **Focus**
+- A **Focus page** one swipe right of Home: start 25/50/90-minute sessions, pause distracting apps for an hour, grayscale for an hour, see what's blocked and switch schedules on or off
+- **Hold the clock** for the same quick actions; Quick Settings tiles for **Focus** and **Grayscale**
+- During a session **Home becomes the countdown**: the clock morphs into it, with your intention, the apps you allowed and press-and-hold to end early
+- **Preset chips** on every focus list (Distracting, Games, Social, Video, Shopping and more), worked out automatically from each app's category and known publishers
 - In-app time reminders per app: when time is up, just remind, close the app and block it for a while, or make you wait before reopening
 - A breathing pause before opening watched apps that grows with each open, an intention question, a floating time-left bar, daily limits per app
 - Block any app for 1 hour to 30 days, blocking schedules by weekday (overnight spans work), focus sessions with Do Not Disturb
