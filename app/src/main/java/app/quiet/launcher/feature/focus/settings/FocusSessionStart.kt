@@ -3,7 +3,7 @@ package app.quiet.launcher.feature.focus.settings
 import app.quiet.launcher.core.platform.rememberAppCategories
 import app.quiet.launcher.designsystem.AppPreset
 import app.quiet.launcher.designsystem.PresetChips
-import app.quiet.launcher.designsystem.presetsFor
+import app.quiet.launcher.designsystem.focusPresetsFor
 import android.app.NotificationManager
 import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
@@ -56,7 +56,9 @@ fun FocusSessionStart(onBack: () -> Unit, onStarted: () -> Unit = {}) {
     val cats = rememberAppCategories(apps.map { it.pkg })
     val list = remember(sorted, query, preset, cats) {
         val q = query.trim()
-        sorted.filter { (q.isEmpty() || it.label.contains(q, ignoreCase = true)) && preset.matches(cats[it.pkg]) }
+        // Distracting apps (games, social, video, shopping, news) are not offered during focus.
+        sorted.filter { cats[it.pkg]?.distracting != true }
+            .filter { (q.isEmpty() || it.label.contains(q, ignoreCase = true)) && preset.matches(cats[it.pkg]) }
     }
 
     val running = snap.session?.takeIf { it.endsMs > System.currentTimeMillis() }
@@ -97,10 +99,10 @@ fun FocusSessionStart(onBack: () -> Unit, onStarted: () -> Unit = {}) {
                 }
             }
             SectionTitle("Apps you may open")
-            Note("Everything else stays closed until the session ends. Your phone app and Quiet always stay open.")
+            Note("Everything else stays closed until the session ends. Your phone app and Quiet always stay open. Games, social, video and shopping apps aren't offered here.")
             LineField(query, "Search apps", { query = it.take(40) }, Modifier.padding(horizontal = ListGutter).padding(top = 8.dp, bottom = 4.dp), QType.body(17.sp))
             PresetChips(
-                presetsFor(cats), preset, { preset = it }, Modifier.padding(top = 8.dp), gutter = ListGutter,
+                focusPresetsFor(cats), preset, { preset = it }, Modifier.padding(top = 8.dp), gutter = ListGutter,
                 selectAllLabel = "Allow all ${list.size}",
                 onSelectAll = { allowed = (allowed + list.map { it.pkg }).distinct() },
             )

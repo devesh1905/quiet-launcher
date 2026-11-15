@@ -42,17 +42,18 @@ import kotlinx.coroutines.launch
 
 const val ClockKey = "home-clock"
 
-/** Re-reads the manual grayscale end time; ticks once a minute so "on until" stays honest. */
+/**
+ * The manual grayscale end time, followed live from the store (so a tap shows at once instead of
+ * reading the old value before the write lands). [nowMs] ticks so "on until" expires on screen.
+ */
 @Composable
-private fun rememberGrayscaleUntil(refresh: Int): Long {
+private fun rememberGrayscaleUntil(): Pair<Long, Long> {
     val ctx = LocalContext.current
-    val state = produceState(0L, refresh) {
-        while (true) {
-            value = QuickActions.grayscaleUntil(ctx)
-            delay(30_000)
-        }
-    }
-    return state.value
+    val until by remember { app.quiet.launcher.feature.monochrome.MonochromeController.get(ctx).store.config }
+        .collectAsStateWithLifecycle(initialValue = null)
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(15_000); nowMs = System.currentTimeMillis() } }
+    return (until?.manualUntilMs ?: 0L) to nowMs
 }
 
 @Composable
@@ -85,9 +86,8 @@ fun QuickActionList(onOpenFocusSetup: () -> Unit, onOpenUsage: () -> Unit, onAft
     val ctx = LocalContext.current
     val c = Q.colors
     var minutes by remember { mutableIntStateOf(50) }
-    var refresh by remember { mutableIntStateOf(0) }
-    val grayUntil = rememberGrayscaleUntil(refresh)
-    val grayOn = grayUntil > System.currentTimeMillis()
+    val (grayUntil, nowMs) = rememberGrayscaleUntil()
+    val grayOn = grayUntil > maxOf(nowMs, System.currentTimeMillis())
     val distracting = remember { QuickActions.distractingApps(ctx).size }
     val haptic = LocalHapticFeedback.current
     val is24 = android.text.format.DateFormat.is24HourFormat(ctx)
@@ -117,7 +117,7 @@ fun QuickActionList(onOpenFocusSetup: () -> Unit, onOpenUsage: () -> Unit, onAft
             if (grayOn) "Turn grayscale off" else "Grayscale for an hour",
             if (grayOn) "On until ${Format.clock(grayUntil, is24)}" else "Colour back after an hour",
         ) {
-            QuickActions.setGrayscale(ctx, if (grayOn) 0 else 60); refresh++; onAfter()
+            QuickActions.setGrayscale(ctx, if (grayOn) 0 else 60); onAfter()
         }
         QuickRow("Screen time", null) { onOpenUsage(); onAfter() }
     }

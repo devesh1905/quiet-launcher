@@ -21,6 +21,8 @@ enum class AppCategory(val label: String, val distracting: Boolean) {
     NEWS("News and reading", true),
     MESSAGING("Messaging", false),
     MUSIC("Music", false),
+    MONEY("Money", false),
+    TRAVEL("Travel", false),
     PRODUCTIVITY("Work and tools", false),
     OTHER("Other", false),
 }
@@ -75,6 +77,20 @@ object AppCategories {
         ).forEach { put(it, AppCategory.PRODUCTIVITY) }
     }
 
+    private val essentials: Map<String, AppCategory> = buildMap {
+        listOf(
+            "com.phonepe.app", "com.google.android.apps.nbu.paisa.user", "net.one97.paytm", "com.sbi.lotusintouch", "com.sbi.SBIFreedomPlus",
+            "com.fampay.in", "in.org.npci.upiapp", "com.csam.icici.bank.imobile", "com.snapwork.hdfc", "com.axis.mobile",
+            "com.google.android.apps.walletnfcrel", "com.azure.authenticator", "com.google.android.apps.authenticator2",
+            "in.gov.umang.negd.g2c", "com.digilocker.android", "in.gov.uidai.mAadhaarPlus", "com.piepay",
+        ).forEach { put(it, AppCategory.MONEY) }
+        listOf(
+            "com.google.android.apps.maps", "com.ubercab", "com.olacabs.customer", "com.rapido.passenger", "in.juspay.nammayatri",
+            "com.railyatri.in.mobile", "com.whereismytrain.android", "net.skyscanner.android.main", "org.digiyatra.org",
+            "org.cris.aikyam", "in.mobility.cumta", "com.makemytrip", "com.ixigo", "com.goibibo", "in.redbus.android",
+        ).forEach { put(it, AppCategory.TRAVEL) }
+    }
+
     private val gamePrefixes = listOf(
         "com.supercell.", "com.king.", "com.activision.", "com.garena.", "com.pubg.", "com.tencent.ig", "com.ubisoft.",
         "com.roblox.", "com.mojang.", "com.miniclip.", "com.rovio.", "com.ea.", "com.gameloft.", "com.netmarble.",
@@ -86,6 +102,7 @@ object AppCategories {
     fun of(ctx: Context, pkg: String): AppCategory = cache.getOrPut(pkg) { classify(ctx.packageManager, pkg) }
 
     private fun classify(pm: PackageManager, pkg: String): AppCategory {
+        essentials[pkg]?.let { return it }
         known[pkg]?.let { return it }
         if (gamePrefixes.any { pkg.startsWith(it) }) return AppCategory.GAMES
         val info: ApplicationInfo? = try { pm.getApplicationInfo(pkg, 0) } catch (_: Exception) { null }
@@ -99,7 +116,8 @@ object AppCategories {
                     ApplicationInfo.CATEGORY_VIDEO -> return AppCategory.VIDEO
                     ApplicationInfo.CATEGORY_AUDIO -> return AppCategory.MUSIC
                     ApplicationInfo.CATEGORY_NEWS -> return AppCategory.NEWS
-                    ApplicationInfo.CATEGORY_PRODUCTIVITY, ApplicationInfo.CATEGORY_MAPS -> return AppCategory.PRODUCTIVITY
+                    ApplicationInfo.CATEGORY_PRODUCTIVITY -> return AppCategory.PRODUCTIVITY
+                    ApplicationInfo.CATEGORY_MAPS -> return AppCategory.TRAVEL
                 }
             }
         }

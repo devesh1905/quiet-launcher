@@ -51,6 +51,7 @@ the lock screen is a painting, not a notification wall. There are no streaks, po
 - **Hold the clock** for the same quick actions; Quick Settings tiles for **Focus** and **Grayscale**
 - During a session **Home becomes the countdown**: the clock morphs into it, with your intention, the apps you allowed and press-and-hold to end early
 - **Preset chips** on every focus list (Distracting, Games, Social, Video, Shopping and more), worked out automatically from each app's category and known publishers
+- **Focus sessions only offer useful apps**: distracting ones are left out, with Essentials, Messaging, Money, Travel and Work presets; your last allowed set is remembered
 - In-app time reminders per app: when time is up, just remind, close the app and block it for a while, or make you wait before reopening
 - A breathing pause before opening watched apps that grows with each open, an intention question, a floating time-left bar, daily limits per app
 - Block any app for 1 hour to 30 days, blocking schedules by weekday (overnight spans work), focus sessions with Do Not Disturb

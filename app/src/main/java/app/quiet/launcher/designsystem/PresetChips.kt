@@ -34,6 +34,13 @@ sealed interface AppPreset {
         override fun matches(cat: AppCategory?) = cat?.distracting == true
     }
 
+    /** What you actually need during focus: messages, money, travel, work. */
+    data object Essentials : AppPreset {
+        override val label = "Essentials"
+        override fun matches(cat: AppCategory?) =
+            cat == AppCategory.MESSAGING || cat == AppCategory.MONEY || cat == AppCategory.TRAVEL || cat == AppCategory.PRODUCTIVITY
+    }
+
     data class Of(val category: AppCategory) : AppPreset {
         override val label = category.label
         override fun matches(cat: AppCategory?) = cat == category
@@ -47,7 +54,7 @@ fun presetsFor(categories: Map<String, AppCategory>): List<Pair<AppPreset, Int>>
     val distracting = categories.values.count { it.distracting }
     val order = listOf(
         AppCategory.GAMES, AppCategory.SOCIAL, AppCategory.VIDEO, AppCategory.SHOPPING, AppCategory.NEWS,
-        AppCategory.MESSAGING, AppCategory.MUSIC, AppCategory.PRODUCTIVITY,
+        AppCategory.MESSAGING, AppCategory.MONEY, AppCategory.TRAVEL, AppCategory.MUSIC, AppCategory.PRODUCTIVITY,
     )
     return buildList {
         add(AppPreset.All to categories.size)
@@ -102,3 +109,21 @@ fun PresetChips(
         }
     }
 }
+
+/**
+ * Presets for choosing what may open during focus: only useful kinds of app, never the distracting
+ * ones (those are left out of the list entirely).
+ */
+fun focusPresetsFor(categories: Map<String, AppCategory>): List<Pair<AppPreset, Int>> {
+    if (categories.isEmpty()) return emptyList()
+    val useful = categories.values.filter { !it.distracting }
+    val counts = useful.groupingBy { it }.eachCount()
+    val essentials = useful.count { AppPreset.Essentials.matches(it) }
+    return buildList {
+        add(AppPreset.All to useful.size)
+        if (essentials > 0) add(AppPreset.Essentials to essentials)
+        listOf(AppCategory.MESSAGING, AppCategory.MONEY, AppCategory.TRAVEL, AppCategory.PRODUCTIVITY, AppCategory.MUSIC)
+            .forEach { c -> counts[c]?.takeIf { it > 0 }?.let { add(AppPreset.Of(c) to it) } }
+    }
+}
+
