@@ -81,6 +81,18 @@ the lock screen is a painting, not a notification wall. There are no streaks, po
 Quiet is a personal project and is not on the Play Store. Installing over adb or from Android Studio avoids
 Android 13+ "restricted settings" for accessibility and notification access.
 
+### Install over adb
+
+```bash
+./gradlew :app:testDebugUnitTest :app:assembleRelease
+adb install -r app/build/outputs/apk/release/app-release.apk
+adb shell cmd role add-role-holder --user 0 android.app.role.HOME app.quiet.launcher 0
+```
+
+For the full workflow (safe install with a fallback launcher, granting every permission, set-up commands for
+favourites, the notification filter and focus rules) see **[AGENTS.md](AGENTS.md)**. It's written so coding agents
+can follow it step by step.
+
 ## Permissions and why
 
 | Permission | Used for | Needed? |
