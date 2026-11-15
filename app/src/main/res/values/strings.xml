@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Quiet</string>
+    <string name="media_listener_label">Quiet now playing</string>
+</resources>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quiet: a hairline gallery frame holding a dusk horizon, the sun half set. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- frame -->
+    <path android:strokeColor="#EDEBE6" android:strokeWidth="1.6"
+        android:pathData="M35,35 L73,35 L73,73 L35,73 Z" />
+    <!-- horizon -->
+    <path android:strokeColor="#EDEBE6" android:strokeWidth="1.2" android:strokeLineCap="round"
+        android:pathData="M40,58 L68,58" />
+    <!-- half-set sun -->
+    <path android:fillColor="#F2B98A"
+        android:pathData="M53.5,58 A6.5,6.5 0 0 1 66.5,58 Z" />
+    <!-- its path on the water -->
+    <path android:strokeColor="#F2B98A" android:strokeWidth="1.2" android:strokeLineCap="round"
+        android:strokeAlpha="0.75" android:pathData="M56.5,62 L63.5,62" />
+    <path android:strokeColor="#F2B98A" android:strokeWidth="1.2" android:strokeLineCap="round"
+        android:strokeAlpha="0.45" android:pathData="M58.3,65.5 L61.7,65.5" />
+</vector>

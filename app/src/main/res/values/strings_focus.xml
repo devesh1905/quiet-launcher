@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accessibility service (precision mode) -->
+    <string name="focus_accessibility_label">Quiet precision mode</string>
+    <string name="focus_accessibility_summary">Exact app detection for reminders and blocks</string>
+    <string name="focus_accessibility_description">Quiet uses this to know which app is open, to close short-video feeds you turned off, to keep websites of blocked apps closed, and to lock the screen on a double tap. What it reads stays on this phone and is not kept.</string>
+
+    <!-- Device admin -->
+    <string name="focus_admin_label">Quiet screen lock</string>
+    <string name="focus_admin_description">Lets Quiet lock the screen on a double tap. It can do nothing else.</string>
+    <string name="focus_admin_explanation">Quiet only uses this to lock the screen when you double-tap Home. Android will ask for your PIN at the next unlock instead of your fingerprint. Turn it off in Quiet before uninstalling.</string>
+
+    <!-- Foreground service -->
+    <string name="focus_channel_name">Focus</string>
+    <string name="focus_channel_description">Keeps reminders, pauses and blocks running</string>
+    <string name="focus_notification_title">Quiet is keeping watch</string>
+    <string name="focus_notification_text">Reminders and blocks are on</string>
+</resources>
