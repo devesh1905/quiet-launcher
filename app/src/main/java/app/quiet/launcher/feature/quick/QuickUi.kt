@@ -109,10 +109,24 @@ fun QuickActionList(onOpenFocusSetup: () -> Unit, onOpenUsage: () -> Unit, onAft
             BasicText("Choose the apps first", style = QType.secondary(15.sp).copy(color = c.muted))
         }
         Spacer(Modifier.height(8.dp))
+        var confirmPause by remember { mutableStateOf(false) }
         QuickRow(
             "Pause distracting apps for an hour",
             if (distracting > 0) "$distracting apps" else "None marked yet",
-        ) { QuickActions.pauseDistractions(ctx, 60); onAfter() }
+        ) {
+            if (distracting > 0) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                confirmPause = !confirmPause
+            }
+        }
+        PauseConfirm(
+            visible = confirmPause,
+            onConfirm = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                QuickActions.pauseDistractions(ctx, 60); confirmPause = false; onAfter()
+            },
+            onCancel = { confirmPause = false },
+        )
         QuickRow(
             if (grayOn) "Turn grayscale off" else "Grayscale for an hour",
             if (grayOn) "On until ${Format.clock(grayUntil, is24)}" else "Colour back after an hour",
@@ -120,6 +134,56 @@ fun QuickActionList(onOpenFocusSetup: () -> Unit, onOpenUsage: () -> Unit, onAft
             QuickActions.setGrayscale(ctx, if (grayOn) 0 else 60); onAfter()
         }
         QuickRow("Screen time", null) { onOpenUsage(); onAfter() }
+    }
+}
+
+/**
+ * Asks before blocking: unfolds under the row with the apps that will be paused and when they
+ * come back. Nothing is blocked until "Pause for an hour" is pressed.
+ */
+@Composable
+private fun PauseConfirm(visible: Boolean, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    val ctx = LocalContext.current
+    val c = Q.colors
+    val apps by ctx.container.apps.apps.collectAsStateWithLifecycle()
+    val is24 = android.text.format.DateFormat.is24HourFormat(ctx)
+    AnimatedVisibility(
+        visible = visible,
+        enter = expandVertically(spring(dampingRatio = 0.85f, stiffness = 420f), expandFrom = Alignment.Top) +
+            fadeIn(tween(220, delayMillis = 60)) + scaleIn(spring(0.8f, 500f), initialScale = 0.96f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)),
+        exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 600f), shrinkTowards = Alignment.Top) +
+            fadeOut(tween(140)) + scaleOut(tween(160), targetScale = 0.97f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)),
+    ) {
+        val names = remember(apps, visible) {
+            val pkgs = QuickActions.distractingApps(ctx)
+            apps.filter { it.key.packageName in pkgs }.map { it.label }.distinct().sorted()
+        }
+        val back = remember(visible) { System.currentTimeMillis() + 60 * 60_000L }
+        Column(
+            Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
+                .border(1.dp, c.edge, RoundedCornerShape(24.dp)).padding(20.dp),
+        ) {
+            BasicText("Pause ${names.size} apps until ${Format.clock(back, is24)}?", style = QType.body(17.sp).copy(color = c.ink))
+            Spacer(Modifier.height(6.dp))
+            val shown = names.take(6).joinToString(", ")
+            BasicText(
+                if (names.size > 6) "$shown and ${names.size - 6} more" else shown,
+                style = QType.secondary(14.sp).copy(color = c.muted),
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(24.dp)).border(1.dp, c.edge, RoundedCornerShape(24.dp))
+                        .pressable(pressedScale = 0.96f, onClick = onCancel),
+                    contentAlignment = Alignment.Center,
+                ) { BasicText("Not now", style = QType.body(16.sp).copy(color = c.ink)) }
+                Box(
+                    Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(24.dp)).background(c.ink)
+                        .pressable(pressedScale = 0.96f, onClick = onConfirm),
+                    contentAlignment = Alignment.Center,
+                ) { BasicText("Pause for an hour", style = QType.body(16.sp).copy(color = c.onInk)) }
+            }
+        }
     }
 }
 
