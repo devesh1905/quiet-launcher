@@ -76,6 +76,8 @@ data class LockContext(
     val animate: Boolean,
     /** Rendering for the system lock-screen wallpaper: no clock of ours, top kept clear for the system's. */
     val wallpaper: Boolean = false,
+    /** Space kept clear above the bottom edge for the fingerprint ring (measured from the sensor). */
+    val bottomReserve: androidx.compose.ui.unit.Dp = LockBottomReserve,
 )
 
 // ---------- shared pieces ----------

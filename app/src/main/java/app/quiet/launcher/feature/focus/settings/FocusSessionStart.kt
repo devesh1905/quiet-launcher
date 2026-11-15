@@ -44,9 +44,13 @@ fun FocusSessionStart(onBack: () -> Unit, onStarted: () -> Unit = {}) {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { policy = hasPolicyAccess(ctx) }
     BackHandler(onBack = onBack)
     val defaults = snap.defaultWatched
-    // Watched apps last: a session is for the other ones.
-    val list = remember(apps, week, defaults) {
-        apps.sortedWith(compareBy<AppItem> { it.pkg in defaults }.thenByDescending { week[it.pkg] ?: 0L }.thenBy { it.label.lowercase() })
+    // A to Z (accent- and case-insensitive), filtered by the search line.
+    var query by rememberSaveable { mutableStateOf("") }
+    val collator = remember { java.text.Collator.getInstance().apply { strength = java.text.Collator.PRIMARY } }
+    val sorted = remember(apps) { apps.sortedWith { a, b -> collator.compare(a.label, b.label) } }
+    val list = remember(sorted, query) {
+        val q = query.trim()
+        if (q.isEmpty()) sorted else sorted.filter { it.label.contains(q, ignoreCase = true) }
     }
 
     val running = snap.session?.takeIf { it.endsMs > System.currentTimeMillis() }
@@ -88,6 +92,10 @@ fun FocusSessionStart(onBack: () -> Unit, onStarted: () -> Unit = {}) {
             }
             SectionTitle("Apps you may open")
             Note("Everything else stays closed until the session ends. Your phone app and Quiet always stay open.")
+            LineField(query, "Search apps", { query = it.take(40) }, Modifier.padding(horizontal = ListGutter).padding(top = 8.dp, bottom = 4.dp), QType.body(17.sp))
+            if (allowed.isNotEmpty()) {
+                Note("${allowed.size} chosen")
+            }
         }
         items(list, key = { it.pkg }) { app ->
             AppCheckRow(app.label, null, app.pkg in allowed) {

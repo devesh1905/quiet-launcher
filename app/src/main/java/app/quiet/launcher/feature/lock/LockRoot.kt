@@ -84,10 +84,16 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
     var lastCover by remember { mutableStateOf(np?.track) }
     LaunchedEffect(np?.track?.id) { np?.track?.let { lastCover = it } }
 
+    // The ring sits on the in-display sensor; music only needs to clear the ring (+16 dp), not the hint.
+    val sensorReserve = remember(size) {
+        val sp = readSensorSpot(size.width, size.height)
+        with(density) { ((size.height - (sp.cy - sp.radius)).coerceAtLeast(0f)).toDp() } + 16.dp
+    }
     val lockCtx = LockContext(
         face = lockFace(settings.lockFont), minute = minute, is24h = DateFormat.is24HourFormat(ctx),
         usageMs = usage.totalMs, oneThing = settings.oneThingToday, art = art,
         lat = settings.latitude, lon = settings.longitude, city = settings.cityName, animate = !reduced,
+        bottomReserve = if (size.height > 1) sensorReserve else LockBottomReserve,
     )
 
     // ---------- unlock drag ----------

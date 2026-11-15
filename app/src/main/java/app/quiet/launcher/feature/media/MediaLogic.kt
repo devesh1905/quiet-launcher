@@ -13,7 +13,8 @@ interface SessionInfo {
 
 internal object MediaLogic {
     /** Keep a paused/stopped track visible this long. */
-    const val PAUSED_TTL_MS = 30 * 60_000L
+    /** A paused/stopped track stays on screen this long after music last played, then disappears. */
+    const val PAUSED_TTL_MS = 15 * 60_000L
 
     /**
      * Picks the session to show: first actively playing one; else the one matching [lastPlayingPackage];

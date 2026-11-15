@@ -51,6 +51,12 @@ class NowPlayingRepositoryImpl(context: Context, private val scope: CoroutineSco
     private var chosen: MediaController? = null
     private var lastPlayingPackage: String? = null
     private var idleSince = 0L
+    // When music last played, in wall-clock time and persisted, so a paused session that is still
+    // registered after hours (or after a restart) does not bring the old song back.
+    private val playPrefs = context.applicationContext.getSharedPreferences("now_playing", Context.MODE_PRIVATE)
+    private var wasPlaying = false
+    private fun markPlayedNow() { playPrefs.edit().putLong("last_played_at", System.currentTimeMillis()).apply() }
+    private fun lastPlayedAt(): Long = playPrefs.getLong("last_played_at", 0L)
     private var lastEmitAt = 0L
     private var rebuildPending = false
     private var artJob: Job? = null
@@ -208,10 +214,18 @@ class NowPlayingRepositoryImpl(context: Context, private val scope: CoroutineSco
 
         val now = SystemClock.elapsedRealtime()
         val playing = isPlayingState(ps?.state)
-        if (playing) { lastPlayingPackage = c.packageName; idleSince = 0L }
-        else if (idleSince == 0L) idleSince = ps?.lastPositionUpdateTime?.takeIf { it in 1..now } ?: now
-        if (MediaLogic.isExpired(playing, idleSince, now)) { publish(null); return }
-        if (!playing) main.postDelayed(expiryRunnable, (idleSince + MediaLogic.PAUSED_TTL_MS - now + 1000).coerceAtLeast(1000))
+        val wall = System.currentTimeMillis()
+        if (playing) {
+            lastPlayingPackage = c.packageName; idleSince = 0L
+            if (!wasPlaying) markPlayedNow()
+            wasPlaying = true
+        } else {
+            if (wasPlaying) { markPlayedNow(); wasPlaying = false }   // the moment it stopped
+            val last = lastPlayedAt()
+            // Never seen playing (e.g. a stale session after a restart), or stopped too long ago: hide it.
+            if (last == 0L || wall - last > MediaLogic.PAUSED_TTL_MS) { publish(null); return }
+            main.postDelayed(expiryRunnable, (last + MediaLogic.PAUSED_TTL_MS - wall + 1000).coerceAtLeast(1000))
+        }
 
         val artist = artistOf(md)
         val duration = md.getLong(MediaMetadata.METADATA_KEY_DURATION).coerceAtLeast(0)

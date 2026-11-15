@@ -153,6 +153,17 @@ fun SettingsScreen(
                 )
             }
 
+            section("Focus and screen time") {
+                ValueRow("Start a focus session", "", onClick = onOpenFocusSession)
+                ValueRow("App time and pauses", "", onClick = onOpenFocus)
+                ValueRow("Blocking schedules", "", onClick = onOpenSchedules)
+                ValueRow("Precision mode", "", onClick = onOpenPrecision)
+                ValueRow("Notification filter", "", onClick = onOpenNotifications)
+                ValueRow("Monochrome", "", onClick = onOpenMonochrome)
+                ValueRow("Hidden apps", "", onClick = onOpenHidden)
+                ValueRow("Screen time", "", onClick = onOpenUsage)
+            }
+
             section("Home") {
                 SwitchRow("Show usage on Home", s.showUsageOnHome) { v -> update { it.copy(showUsageOnHome = v) } }
                 SwitchRow("Show now playing on Home", s.showNowPlayingOnHome) { v -> update { it.copy(showNowPlayingOnHome = v) } }
@@ -240,18 +251,7 @@ fun SettingsScreen(
                 }
             }
 
-            section("Focus") {
-                ValueRow("App time and pauses", "", onClick = onOpenFocus)
-                ValueRow("Blocking schedules", "", onClick = onOpenSchedules)
-                ValueRow("Start a focus session", "", onClick = onOpenFocusSession)
-                ValueRow("Precision mode", "", onClick = onOpenPrecision)
-                ValueRow("Notification filter", "", onClick = onOpenNotifications)
-                ValueRow("Monochrome", "", onClick = onOpenMonochrome)
-                ValueRow("Hidden apps", "", onClick = onOpenHidden)
-            }
-
             section("More") {
-                ValueRow("Screen time", "", onClick = onOpenUsage)
                 ValueRow("About", "Quiet ${BuildConfig.VERSION_NAME}", onClick = null)
                 Text(
                     "Licences",

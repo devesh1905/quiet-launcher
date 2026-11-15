@@ -43,7 +43,8 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
     val reduced = Q.reducedMotion
     val t = updateTransition(!np.isPlaying, label = "paused")
     val spec = if (reduced) tween<Float>(0) else QMotion.Settle
-    val clockScale by t.animateFloat({ spec }, label = "clock") { if (it) 1.55f else 1f }
+    // Playing: the cover leads and the clock steps back; paused: the clock takes over.
+    val clockScale by t.animateFloat({ spec }, label = "clock") { if (it) 1.35f else 0.72f }
     val clockDrop by t.animateFloat({ spec }, label = "drop") { if (it) 34f else 0f }
     val artScale by t.animateFloat({ spec }, label = "art") { if (it) 0.56f else 1f }
     val dim by t.animateFloat({ if (reduced) tween(0) else tween(600) }, label = "dim") { if (it) 1f else 0f }
@@ -60,10 +61,10 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
             strength = ambientStrength, running = ctx.animate && np.isPlaying, fallbackArt = np.track.art,
         )
         Column(
-            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars).padding(horizontal = 40.dp),
+            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars).padding(horizontal = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(16.dp))
             var clockH by remember { mutableIntStateOf(0) }
             LockClock(
                 ctx,
@@ -78,16 +79,16 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
             // The clock grows with a transform (cheap), so give the layout the same extra room:
             // the art below then shrinks into the space that is really left.
             val density = androidx.compose.ui.platform.LocalDensity.current
-            Spacer(Modifier.height(20.dp + with(density) { (clockH * (clockScale - 1f)).toDp() } + clockDrop.dp))
+            Spacer(Modifier.height(16.dp + with(density) { (clockH * (clockScale - 1f)).toDp() } + clockDrop.dp))
             GalleryFrame(
                 art = np.track.art, fallbackTitle = np.track.title, matColor = c.mat, matFraction = 15f / 332f,
                 contentKey = np.track.id, shadow = 26.dp,
                 modifier = Modifier
                     .pointerInput(Unit) { detectTapGestures(onLongPress = { onArtLongPress() }) }
-                    // Takes whatever height is left (never more than 84 % of the width) so the
-                    // controls always clear the fingerprint ring.
+                    // As big as the space allows (full width at most) while the controls still clear
+                    // the fingerprint ring below.
                     .weight(1f, fill = false)
-                    .fillMaxWidth(0.84f)
+                    .fillMaxWidth()
                     .aspectRatio(1f, matchHeightConstraintsFirst = true)
                     .graphicsLayer {
                         scaleX = artScale; scaleY = artScale
@@ -101,7 +102,7 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
                         artRect = Rect(b.left - rb.left, b.top - rb.top, b.right - rb.left, b.bottom - rb.top)
                     },
             )
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(18.dp))
             Column(Modifier.graphicsLayer { translationY = ctrlRise.dp.toPx() }) {
                 AnimatedContent(np.track, transitionSpec = { fadeIn(tween(300, 160)) togetherWith fadeOut(tween(160)) }, label = "lbl") { tr ->
                     LockLabel(ctx, tr.title, tr.artist, listOfNotNull(tr.album, tr.year).joinToString(", ").ifBlank { null }, Modifier.fillMaxWidth())
@@ -120,8 +121,7 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
                 Spacer(Modifier.height(12.dp))
                 TransportControls(np.isPlaying, repo, c.edgeOnField)
             }
-            Spacer(Modifier.height(12.dp))
-            Spacer(Modifier.height(LockBottomReserve))
+            Spacer(Modifier.height(ctx.bottomReserve))
         }
     }
 }

@@ -80,6 +80,11 @@ fun AppsScreen(
 
     // Focus only while this page is in front: focusing off-screen would pull the pager here.
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    // Put the keyboard away when the user starts browsing instead of typing.
+    fun dismissKeyboard() { keyboard?.hide(); focusManager.clearFocus() }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collect { scrolling -> if (scrolling) dismissKeyboard() }
+    }
     LaunchedEffect(isActive, focusSearch) {
         if (isActive && (focusSearch || settings.autoKeyboard)) {
             runCatching { focus.requestFocus() }
@@ -140,7 +145,7 @@ fun AppsScreen(
                     modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 )
             }
-            Box(Modifier.size(44.dp).pressable(onClick = onOpenSettings), contentAlignment = Alignment.CenterEnd) {
+            Box(Modifier.size(44.dp).pressable { dismissKeyboard(); onOpenSettings() }, contentAlignment = Alignment.CenterEnd) {
                 QIconView(QIcon.Settings, c.muted, size = 20.dp)
             }
         }
@@ -191,8 +196,8 @@ fun AppsScreen(
                 AlphabetScroller(
                     letters = letterIndex.keys.toList(),
                     current = current,
-                    onScrub = { l -> letterIndex[l]?.let { idx -> scope.launch { listState.scrollToItem(idx) } } },
-                    onTap = { l -> letterIndex[l]?.let { idx -> scope.launch { listState.animateScrollToItem(idx) } } },
+                    onScrub = { l -> dismissKeyboard(); letterIndex[l]?.let { idx -> scope.launch { listState.scrollToItem(idx) } } },
+                    onTap = { l -> dismissKeyboard(); letterIndex[l]?.let { idx -> scope.launch { listState.animateScrollToItem(idx) } } },
                     modifier = Modifier.align(Alignment.CenterEnd).padding(end = 4.dp),
                 )
             }
