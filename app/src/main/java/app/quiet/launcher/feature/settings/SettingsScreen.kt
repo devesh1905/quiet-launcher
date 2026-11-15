@@ -60,7 +60,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import app.quiet.launcher.BuildConfig
 import app.quiet.launcher.container
+import app.quiet.launcher.core.model.Artwork
 import app.quiet.launcher.core.model.LauncherSettings
+import androidx.compose.ui.graphics.asImageBitmap
 import app.quiet.launcher.core.model.LockFont
 import app.quiet.launcher.core.model.LockStyle
 import app.quiet.launcher.core.model.ThemeMode
@@ -131,6 +133,9 @@ fun SettingsScreen(
     }
 
     var pendingUri by remember { mutableStateOf<Uri?>(null) }
+    val library by container.art.library.collectAsState()
+    val today by container.art.today.collectAsState()
+    var openArt by remember { mutableStateOf<Artwork?>(null) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) pendingUri = uri
     }
@@ -201,6 +206,11 @@ fun SettingsScreen(
                 ValueRow("Add your own artwork", "", onClick = {
                     picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 })
+                YourArtworks(
+                    works = library.filter { it.isUserProvided },
+                    currentId = today?.id,
+                    onOpen = { openArt = it },
+                )
                 Label("Ambient colour strength")
                 SegmentedRow(
                     listOf("Off", "Subtle", "Full"),
@@ -266,6 +276,25 @@ fun SettingsScreen(
         }
     }
 
+    openArt?.let { w ->
+        ArtworkDialog(
+            work = w,
+            showing = today?.id == w.id,
+            onDismiss = { openArt = null },
+            onShow = {
+                openArt = null
+                scope.launch {
+                    container.art.show(w.id)
+                    container.settings.update { it.copy(lockStyle = LockStyle.MASTERPIECE) }
+                }
+            },
+            onRemove = {
+                openArt = null
+                scope.launch { container.art.removeUserArtwork(w.id) }
+            },
+        )
+    }
+
     pendingUri?.let { uri ->
         AddArtworkDialog(
             onDismiss = { pendingUri = null },
@@ -308,9 +337,11 @@ private fun Text(
     color: Color,
     modifier: Modifier = Modifier,
     align: TextAlign? = null,
+    maxLines: Int = Int.MAX_VALUE,
 ) {
     androidx.compose.foundation.text.BasicText(
         text, modifier, style = style.copy(color = color, textAlign = align ?: TextAlign.Unspecified),
+        maxLines = maxLines, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
     )
 }
 
@@ -570,6 +601,84 @@ private fun AddArtworkDialog(onDismiss: () -> Unit, onSave: (title: String, arti
                 DialogButton("Add", true) {
                     onSave(title.trim().ifEmpty { "Untitled" }, artist.trim().ifEmpty { "Unknown" })
                 }
+            }
+        }
+    }
+}
+
+/** Your uploaded artworks as small framed thumbnails; tap one to show it now or remove it. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun YourArtworks(works: List<Artwork>, currentId: String?, onOpen: (Artwork) -> Unit) {
+    if (works.isEmpty()) {
+        Text(
+            "Artworks you add appear here. A new one goes on the lock screen straight away, then comes back about once a week.",
+            QType.secondary(14.sp), Q.colors.muted, Modifier.padding(horizontal = Gutter).padding(bottom = 8.dp),
+        )
+        return
+    }
+    Label("Your artworks  ${works.size}")
+    Text(
+        "Each one shows on the lock screen the day you add it, then about once a week. Tap one to show it now or remove it.",
+        QType.secondary(14.sp), Q.colors.muted, Modifier.padding(horizontal = Gutter).padding(bottom = 12.dp),
+    )
+    FlowRow(
+        Modifier.padding(horizontal = Gutter).padding(bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        works.forEach { w ->
+            val bmp = app.quiet.launcher.feature.lock.rememberFileBitmap(w.imagePath, maxSide = 360)
+            val on = w.id == currentId
+            val shape = RoundedCornerShape(10.dp)
+            Column(Modifier.width(96.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onOpen(w) }) {
+                Box(
+                    Modifier.size(96.dp).clip(shape).background(Q.colors.raised)
+                        .border(if (on) 2.dp else 1.dp, if (on) Q.colors.ink else Q.colors.line, shape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (bmp != null) {
+                        androidx.compose.foundation.Image(
+                            bmp.asImageBitmap(), contentDescription = w.title,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize().padding(if (on) 2.dp else 1.dp).clip(RoundedCornerShape(8.dp)),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(w.title, QType.small(), Q.colors.ink, maxLines = 1)
+                Text(if (on) "Showing today" else w.artist, QType.small(), Q.colors.muted, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArtworkDialog(work: Artwork, showing: Boolean, onDismiss: () -> Unit, onShow: () -> Unit, onRemove: () -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    val bmp = app.quiet.launcher.feature.lock.rememberFileBitmap(work.imagePath, maxSide = 1000)
+    var confirmRemove by remember { mutableStateOf(false) }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().clip(shape).background(Q.colors.raised).border(1.dp, Q.colors.line, shape).padding(24.dp),
+        ) {
+            if (bmp != null) {
+                androidx.compose.foundation.Image(
+                    bmp.asImageBitmap(), contentDescription = work.title,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                    modifier = Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(10.dp)),
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+            Text(work.title, QType.title(22.sp), Q.colors.ink)
+            Text(work.artist, QType.secondary(), Q.colors.muted)
+            Spacer(Modifier.height(20.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                DialogButton(if (confirmRemove) "Remove for good" else "Remove", false) {
+                    if (confirmRemove) onRemove() else confirmRemove = true
+                }
+                Spacer(Modifier.width(8.dp))
+                DialogButton(if (showing) "Showing today" else "Show now", true) { if (showing) onDismiss() else onShow() }
             }
         }
     }

@@ -119,7 +119,7 @@ adb shell pm grant app.quiet.launcher android.permission.WRITE_SECURE_SETTINGS
 ## Privacy
 
 No analytics, no ads, no account, no crash reporting. The only network calls fetch public-domain
-paintings from museum APIs (once a day, on Wi-Fi by default). Usage data, held notifications and
+paintings from museum APIs (a few a day, a few MB, on Wi-Fi or mobile data). Usage data, held notifications and
 everything precision mode sees stay on the phone.
 
 ## Build

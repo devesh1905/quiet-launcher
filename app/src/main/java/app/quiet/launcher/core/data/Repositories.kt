@@ -52,7 +52,12 @@ interface ArtRepository {
     suspend fun refreshIfStale()
     /** Show the next cached work now (used by the lock picker). */
     suspend fun skip()
+    /** Adds your own artwork and shows it on the lock screen straight away. */
     suspend fun addUserArtwork(uri: android.net.Uri, title: String, artist: String): Artwork?
+    /** Make this work today's painting now. */
+    suspend fun show(id: String)
+    /** Delete one of your own artworks. */
+    suspend fun removeUserArtwork(id: String)
 }
 
 data class BatteryState(val level: Float, val charging: Boolean)

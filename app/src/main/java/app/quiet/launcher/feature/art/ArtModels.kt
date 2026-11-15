@@ -54,6 +54,8 @@ object ArtLogic {
     const val MAX_CACHED = 7
     const val MIN_CACHED = 3
     const val NO_REPEAT_DAYS = 60L
+    /** Your own artworks come back about once a week each. */
+    const val USER_REPEAT_DAYS = 7L
     const val BACKOFF_MS = 30 * 60_000L
     const val MIN_LONGEST_SIDE = 1000
     const val MAX_LONGEST_SIDE = 2400
@@ -137,18 +139,37 @@ object ArtLogic {
     }
 
     /**
-     * Next work to show: prefers unseen (not shown in the last 60 days), never the current one
-     * unless it is the only one; among seen works picks the least recently shown.
+     * Next work to show, never the current one unless it is the only one:
+     *  1. one of your own artworks not shown in the last [USER_REPEAT_DAYS] days (least recently shown);
+     *  2. a museum work not shown in the last 60 days (newest download first);
+     *  3. otherwise whatever was shown longest ago.
      */
     fun pickNext(index: ArtIndex, now: Long): StoredWork? {
-        val cached = cachedWorks(index)
-        if (cached.isEmpty()) return null
-        val others = cached.filter { it.id != index.currentId }.ifEmpty { return cached.first() }
+        val all = index.works
+        if (all.isEmpty()) return null
+        val others = all.filter { it.id != index.currentId }.ifEmpty { return all.first() }
         val lastShown = index.history.groupBy { it.id }.mapValues { e -> e.value.maxOf { it.shownAt } }
+        val userRecent = recentIds(index.history, now, USER_REPEAT_DAYS)
+        others.filter { it.isUser && it.id !in userRecent }
+            .minByOrNull { lastShown[it.id] ?: 0L }?.let { return it }
         val seen = recentIds(index.history, now)
-        val unseen = others.filter { it.id !in seen }
+        val unseen = others.filter { !it.isUser && it.id !in seen }
         if (unseen.isNotEmpty()) return unseen.maxByOrNull { it.addedAt }
         return others.minByOrNull { lastShown[it.id] ?: 0L }
+    }
+
+    /** Make [id] today's work right now (adding one of your own, or "Show now"). */
+    fun show(index: ArtIndex, id: String, now: Long, zone: ZoneId = ZoneId.systemDefault()): ArtIndex {
+        val work = index.works.firstOrNull { it.id == id } ?: return index
+        return makeCurrent(index, work, now, zone)
+    }
+
+    /** Remove [id]; if it was showing, move on to the next work. */
+    fun remove(index: ArtIndex, id: String, now: Long, zone: ZoneId = ZoneId.systemDefault()): ArtIndex {
+        val next = index.copy(works = index.works.filter { it.id != id })
+        if (index.currentId != id) return next
+        val pick = pickNext(next.copy(currentId = null), now) ?: return next.copy(currentId = null, currentDate = null)
+        return makeCurrent(next, pick, now, zone)
     }
 
     private fun makeCurrent(index: ArtIndex, work: StoredWork, now: Long, zone: ZoneId): ArtIndex =
@@ -166,7 +187,7 @@ object ArtLogic {
 
     /** Rotate if the date changed or the current work is missing. */
     fun ensureToday(index: ArtIndex, now: Long, zone: ZoneId = ZoneId.systemDefault()): ArtIndex {
-        val curOk = index.currentId != null && cachedWorks(index).any { it.id == index.currentId }
+        val curOk = index.currentId != null && index.works.any { it.id == index.currentId }
         if (curOk && index.currentDate == localDate(now, zone)) return index
         val next = pickNext(index, now) ?: return index
         return makeCurrent(index, next, now, zone)
@@ -174,7 +195,7 @@ object ArtLogic {
 
     fun needsRefresh(index: ArtIndex, now: Long, zone: ZoneId = ZoneId.systemDefault()): Boolean {
         val cached = cachedWorks(index)
-        val currentMissing = index.currentId == null || cached.none { it.id == index.currentId } ||
+        val currentMissing = index.currentId == null || index.works.none { it.id == index.currentId } ||
             index.currentDate != localDate(now, zone)
         return currentMissing || cached.size < MIN_CACHED || unseenCount(index, now) < MIN_CACHED
     }

@@ -29,10 +29,10 @@ class DailyArtWorker(context: Context, params: WorkerParameters) : CoroutineWork
 object ArtScheduler {
     const val UNIQUE_NAME = "quiet_daily_art"
 
-    /** Idempotent: keeps an already-scheduled job. */
+    /** Idempotent; UPDATE so a changed constraint (e.g. mobile data allowed) reaches an existing job. */
     fun schedule(context: Context) {
         val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.UNMETERED)
+            .setRequiredNetworkType(NetworkType.CONNECTED)
             .setRequiresBatteryNotLow(true)
             .build()
         val req = PeriodicWorkRequestBuilder<DailyArtWorker>(24, TimeUnit.HOURS, 6, TimeUnit.HOURS)
@@ -40,6 +40,6 @@ object ArtScheduler {
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.MINUTES)
             .build()
         WorkManager.getInstance(context.applicationContext)
-            .enqueueUniquePeriodicWork(UNIQUE_NAME, ExistingPeriodicWorkPolicy.KEEP, req)
+            .enqueueUniquePeriodicWork(UNIQUE_NAME, ExistingPeriodicWorkPolicy.UPDATE, req)
     }
 }

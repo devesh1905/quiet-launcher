@@ -78,7 +78,27 @@ class ArtLogicTest {
         assertEquals("b", ArtLogic.pickNext(idx, now)!!.id)
         val single = ArtIndex(works = listOf(work("a", 1)), currentId = "a")
         assertEquals("a", ArtLogic.pickNext(single, now)!!.id)
-        assertNull(ArtLogic.pickNext(ArtIndex(works = listOf(work("u", 1, user = true))), now))
+        assertEquals("u", ArtLogic.pickNext(ArtIndex(works = listOf(work("u", 1, user = true))), now)!!.id)
+        assertNull(ArtLogic.pickNext(ArtIndex(), now))
+    }
+
+    @Test fun own_artworks_come_back_weekly_and_show_now() {
+        val now = t(2026, 6, 10)
+        val base = ArtIndex(
+            works = listOf(work("a", 1), work("b", 2), work("mine", 0, user = true)),
+            currentId = "a",
+            history = listOf(HistoryEntry("mine", now - 3 * day), HistoryEntry("a", now)),
+        )
+        // shown 3 days ago: not due, a museum work comes next
+        assertEquals("b", ArtLogic.pickNext(base, now)!!.id)
+        // 8 days later it is due again and goes first
+        assertEquals("mine", ArtLogic.pickNext(base, now + 5 * day)!!.id)
+        // show now / remove
+        val shown = ArtLogic.show(base, "mine", now, zone)
+        assertEquals("mine", shown.currentId)
+        val removed = ArtLogic.remove(shown, "mine", now, zone)
+        assertFalse(removed.works.any { it.id == "mine" })
+        assertTrue(removed.currentId == "a" || removed.currentId == "b")
     }
 
     @Test fun skip_advances_immediately() {

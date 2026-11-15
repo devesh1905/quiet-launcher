@@ -129,7 +129,7 @@ class ArtRepositoryImpl(
                     artist = artist.trim().ifEmpty { "Unknown" },
                     file = file, isUser = true, addedAt = System.currentTimeMillis(),
                 )
-                mutate { it.copy(works = it.works + work) }
+                mutate { ArtLogic.show(it.copy(works = it.works + work), work.id, System.currentTimeMillis()) }
                 toArtwork(work)
             } catch (e: CancellationException) {
                 throw e
@@ -138,6 +138,34 @@ class ArtRepositoryImpl(
                 null
             }
         }
+
+    override suspend fun show(id: String) {
+        withContext(Dispatchers.IO) {
+            try {
+                loadJob.join()
+                mutate { ArtLogic.show(it, id, System.currentTimeMillis()) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Log.w(TAG, "show failed", e)
+            }
+        }
+    }
+
+    override suspend fun removeUserArtwork(id: String) {
+        withContext(Dispatchers.IO) {
+            try {
+                loadJob.join()
+                val w = index.works.firstOrNull { it.id == id && it.isUser } ?: return@withContext
+                mutate { ArtLogic.remove(it, id, System.currentTimeMillis()) }
+                File(dir, w.file).delete()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Log.w(TAG, "remove failed", e)
+            }
+        }
+    }
 
     // ---- refresh ----
 
@@ -148,12 +176,8 @@ class ArtRepositoryImpl(
         val start = index
         if (!ArtLogic.needsRefresh(start, now)) return
         if (ArtLogic.inBackoff(start, now)) return
-        val nothingCached = ArtLogic.cachedWorks(start).isEmpty()
-        when (networkState()) {
-            NetState.NONE -> return
-            NetState.METERED -> if (!nothingCached) return
-            NetState.UNMETERED -> {}
-        }
+        // Wi-Fi or mobile data: a few paintings a day is a few MB.
+        if (networkState() == NetState.NONE) return
         val target = ArtLogic.fetchTarget(start)
         var added = 0
         var attempts = 0
@@ -225,7 +249,7 @@ class ArtRepositoryImpl(
     }
 
     private fun publish() {
-        val cur = index.works.firstOrNull { it.id == index.currentId && !it.isUser }
+        val cur = index.works.firstOrNull { it.id == index.currentId }
         _today.value = cur?.let(::toArtwork)
         _library.value = index.works.sortedByDescending { it.addedAt }.map(::toArtwork)
     }
