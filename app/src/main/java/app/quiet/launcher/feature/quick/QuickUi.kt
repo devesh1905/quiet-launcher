@@ -311,6 +311,10 @@ fun FocusPage(onOpenFocusSetup: () -> Unit, onOpenUsage: () -> Unit, onOpenSched
                 QuietSwitch(s.enabled) { v -> scope.launch { rt.repo.saveSchedule(s.copy(enabled = v)) } }
             }
         }
+        Spacer(Modifier.height(36.dp))
+        BasicText("Streak", style = QType.labelTitle(22.sp).copy(color = c.ink))
+        Spacer(Modifier.height(14.dp))
+        app.quiet.launcher.feature.streaks.FocusStreaks()
         Spacer(Modifier.height(48.dp))
     }
 }

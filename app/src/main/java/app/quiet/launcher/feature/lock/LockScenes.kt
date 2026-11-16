@@ -2,6 +2,7 @@ package app.quiet.launcher.feature.lock
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -24,6 +25,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -83,20 +86,21 @@ data class LockContext(
 // ---------- shared pieces ----------
 
 @Composable
-fun LockClock(ctx: LockContext, modifier: Modifier = Modifier, scale: Float = 1f) {
+fun LockClock(ctx: LockContext, modifier: Modifier = Modifier, scale: Float = 1f, tint: Color? = null) {
     val c = Q.colors
+    val ink = tint ?: c.ink
     if (ctx.wallpaper) { Spacer(modifier.height(WallpaperClockSpace)); return }
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         BasicText(
             Format.clock(ctx.minute, ctx.is24h),
             style = TextStyle(
-                fontFamily = ctx.face.display, fontSize = (ctx.face.clockSp * scale).sp, color = c.ink,
+                fontFamily = ctx.face.display, fontSize = (ctx.face.clockSp * scale).sp, color = ink,
                 fontFeatureSettings = "lnum, tnum", letterSpacing = (-0.01).em,
             ),
         )
         BasicText(
             Format.longDate(ctx.minute),
-            style = QType.body(16.sp).copy(color = c.ink.copy(alpha = 0.86f)),
+            style = QType.body(16.sp).copy(color = ink.copy(alpha = 0.86f)),
         )
     }
 }
@@ -136,14 +140,21 @@ fun rememberFileBitmap(path: String?, maxSide: Int = 1600): Bitmap? {
  * the work at its true aspect ratio, and the museum label under it.
  */
 @Composable
-fun MasterpieceScene(ctx: LockContext, modifier: Modifier = Modifier, onArtLongPress: (() -> Unit)? = null) {
+fun MasterpieceScene(ctx: LockContext, modifier: Modifier = Modifier, onArtLongPress: (() -> Unit)? = null, heart: Int = 0) {
     val c = Q.colors
     val art = ctx.art
     val bmp = rememberFileBitmap(art?.imagePath)
-    // The painting's own colours, for the field that glows around the frame.
-    val palette by produceState<IntArray?>(null, bmp) {
-        value = bmp?.let { b -> withContext(Dispatchers.Default) { paintingPalette(b) } }
+    // The painting's own colours, for the field that glows around the frame, the clock and the sheen.
+    // Worked out once per painting, off the main thread, and kept while the painting stays.
+    val palette by produceState(PaintingPaletteCache.get(art?.imagePath), bmp) {
+        val path = art?.imagePath
+        val b = bmp ?: return@produceState
+        value = PaintingPaletteCache.get(path) ?: withContext(Dispatchers.Default) { paintingPalette(b) }.also { PaintingPaletteCache.put(path, it) }
     }
+    // Swatch 3 is the light vibrant one; kept at 9:1 or more on the wall.
+    val clockTint = palette?.let { Color(PaintingTint.clock(it[3], c.ink.toArgb(), c.bg.toArgb())) } ?: c.ink
+    val tint by animateColorAsState(clockTint, androidx.compose.animation.core.tween(if (Q.reducedMotion) 0 else 900), label = "tint")
+    val sheen = palette?.let { Color(PaintingTint.sheen(it[3])) } ?: Color.White
     var root by remember { mutableStateOf<androidx.compose.ui.layout.LayoutCoordinates?>(null) }
     var frameRect by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     Box(
@@ -159,7 +170,7 @@ fun MasterpieceScene(ctx: LockContext, modifier: Modifier = Modifier, onArtLongP
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(36.dp))
-            LockClock(ctx)
+            LockClock(ctx, tint = tint)
             Spacer(Modifier.weight(0.5f))
             if (bmp != null) {
                 val aspect = bmp.width.toFloat() / bmp.height
@@ -176,7 +187,7 @@ fun MasterpieceScene(ctx: LockContext, modifier: Modifier = Modifier, onArtLongP
                                 val b = coords.boundsInRoot(); val rb = r.boundsInRoot()
                                 frameRect = androidx.compose.ui.geometry.Rect(b.left - rb.left, b.top - rb.top, b.right - rb.left, b.bottom - rb.top)
                             }
-                            .frameLightSweep(ctx.animate, art?.id)
+                            .frameLightSweep(ctx.animate, art?.id, sheen)
                             .then(if (onArtLongPress != null) Modifier.pointerInput(Unit) {
                                 awaitEachGesture {
                                     awaitFirstDown(requireUnconsumed = false)
@@ -195,6 +206,7 @@ fun MasterpieceScene(ctx: LockContext, modifier: Modifier = Modifier, onArtLongP
                             val img = remember(b) { b.asImageBitmap() }
                             Image(img, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                         }
+                        FavouriteHeart(heart, Modifier.align(Alignment.Center))
                     }
                 }
             } else {
@@ -405,6 +417,51 @@ fun CoverScene(ctx: LockContext, cover: Bitmap?, title: String?, artist: String?
 
 @Suppress("unused") private val keepSize = Size.Zero
 
+/**
+ * A small heart over the painting when it is added to favourites: fades in, holds, fades out.
+ * Runs only when [pulse] changes (0 = never shown).
+ */
+@Composable
+fun FavouriteHeart(pulse: Int, modifier: Modifier = Modifier) {
+    val reduced = Q.reducedMotion
+    val a = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(pulse) {
+        if (pulse == 0) return@LaunchedEffect
+        a.snapTo(0f)
+        a.animateTo(1f, androidx.compose.animation.core.tween(if (reduced) 0 else 220))
+        kotlinx.coroutines.delay(700)
+        a.animateTo(0f, androidx.compose.animation.core.tween(if (reduced) 0 else 500))
+    }
+    if (a.value <= 0f) return
+    Canvas(
+        modifier.size(56.dp).graphicsLayer {
+            alpha = a.value
+            val s = if (reduced) 1f else 0.85f + 0.15f * a.value
+            scaleX = s; scaleY = s
+        }
+    ) {
+        val w = size.width; val h = size.height
+        val p = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.5f, h * 0.88f)
+            cubicTo(w * 0.1f, h * 0.6f, -w * 0.05f, h * 0.28f, w * 0.25f, h * 0.15f)
+            cubicTo(w * 0.38f, h * 0.1f, w * 0.47f, h * 0.18f, w * 0.5f, h * 0.28f)
+            cubicTo(w * 0.53f, h * 0.18f, w * 0.62f, h * 0.1f, w * 0.75f, h * 0.15f)
+            cubicTo(w * 1.05f, h * 0.28f, w * 0.9f, h * 0.6f, w * 0.5f, h * 0.88f)
+            close()
+        }
+        drawPath(p, Color.Black.copy(alpha = 0.35f), style = Stroke(6.dp.toPx()))
+        drawPath(p, Color(0xFFEDEBE6))
+    }
+}
+
+/** The last painting's swatches, so coming back to the lock screen does not run Palette again. */
+private object PaintingPaletteCache {
+    private var path: String? = null
+    private var swatches: IntArray? = null
+    @Synchronized fun get(p: String?): IntArray? = if (p != null && p == path) swatches else null
+    @Synchronized fun put(p: String?, s: IntArray) { if (p != null) { path = p; swatches = s } }
+}
+
 /** Palette swatches (darkMuted, vibrant, muted, lightVibrant) for the ambient field. */
 fun paintingPalette(b: Bitmap): IntArray {
     val p = androidx.palette.graphics.Palette.from(b).maximumColorCount(16).generate()
@@ -421,7 +478,7 @@ fun paintingPalette(b: Bitmap): IntArray {
  * A picture light passing over the glass: a soft diagonal sheen crosses the frame once when the
  * work is hung (and when it changes), then every 6–7 s, faintly.
  */
-fun Modifier.frameLightSweep(animate: Boolean, key: Any?): Modifier = composed {
+fun Modifier.frameLightSweep(animate: Boolean, key: Any?, sheen: Color = Color.White): Modifier = composed {
     val sweep = remember { androidx.compose.animation.core.Animatable(-0.4f) }
     LaunchedEffect(animate, key) {
         if (!animate) return@LaunchedEffect
@@ -437,7 +494,7 @@ fun Modifier.frameLightSweep(animate: Boolean, key: Any?): Modifier = composed {
         val x = size.width * sweep.value
         drawRect(
             androidx.compose.ui.graphics.Brush.linearGradient(
-                0f to Color.Transparent, 0.5f to Color.White.copy(alpha = 0.10f), 1f to Color.Transparent,
+                0f to Color.Transparent, 0.5f to sheen.copy(alpha = 0.10f), 1f to Color.Transparent,
                 start = Offset(x - size.width * 0.35f, 0f), end = Offset(x + size.width * 0.35f, size.height),
             ),
             blendMode = androidx.compose.ui.graphics.BlendMode.Plus,

@@ -28,6 +28,14 @@ import app.quiet.launcher.core.platform.Format
 import app.quiet.launcher.core.platform.SystemActions
 import app.quiet.launcher.designsystem.*
 import app.quiet.launcher.designsystem.shader.AmbientField
+import app.quiet.launcher.feature.gesture.GesturePrefs
+import app.quiet.launcher.feature.gesture.Ink
+import app.quiet.launcher.feature.gesture.InkHandle
+import app.quiet.launcher.feature.gesture.InkHost
+import app.quiet.launcher.feature.gesture.LetterGestureLayer
+import app.quiet.launcher.feature.gesture.hapticClock
+import app.quiet.launcher.feature.gesture.inkLabel
+import app.quiet.launcher.feature.gesture.rememberHapticClockState
 import app.quiet.launcher.feature.player.NowPlayingCard
 import app.quiet.launcher.feature.player.PlayerScreen
 import app.quiet.launcher.feature.quick.FocusHome
@@ -62,6 +70,11 @@ fun HomeScreen(
     }
     var quickMenu by remember { mutableStateOf(false) }
     val settings by container.settings.settings.collectAsStateWithLifecycle()
+    val gesture by remember { GesturePrefs.get(ctx) }.state.collectAsStateWithLifecycle()
+    val reduced = Q.reducedMotion
+    val view = androidx.compose.ui.platform.LocalView.current
+    val inkScope = rememberCoroutineScope()
+    InkHost()
     val favourites by container.apps.favourites.collectAsStateWithLifecycle(emptyList())
     val usage by container.usage.today.collectAsStateWithLifecycle()
     val usagePerm by container.usage.hasPermission.collectAsStateWithLifecycle()
@@ -119,6 +132,15 @@ fun HomeScreen(
               if (s != null) {
                 with(this@SharedTransitionLayout) { FocusHome(s, this@AnimatedContent) }
               } else {
+            // Draw a letter on Home to open an app (off while anything sits on top of Home).
+            LetterGestureLayer(
+                enabled = gesture.letters && isActive && !playerOpen && !quickMenu && !cardMenu && !glowMenu,
+                map = gesture.map, reduced = reduced,
+                onVerticalSwipe = { up ->
+                    if (up && settings.swipeUpSearch) SystemActions.googleSearch(ctx)
+                    else if (!up && settings.swipeDownNotifications) SystemActions.expandNotifications(ctx)
+                },
+            ) {
             HomeContent(
                 minute = minute, is24h = is24h, batteryLevel = battery.level, charging = battery.charging,
                 usage = usage, usagePerm = usagePerm, showUsage = settings.showUsageOnHome, favourites = favourites,
@@ -128,13 +150,15 @@ fun HomeScreen(
                 onCardLongPress = { cardMenu = true },
                 onBackgroundLongPress = { if (np != null) glowMenu = true },
                 onOpenSearch = onOpenSearch, onOpenUsage = onOpenUsage,
-                onLaunch = { container.apps.launch(it.key) },
+                onLaunch = { app, handle -> Ink.open(view, app.key, handle, gesture.ink && !reduced, inkScope) },
                 onAppLongPress = onAppLongPress,
                 swipeUp = settings.swipeUpSearch, swipeDown = settings.swipeDownNotifications,
                 sharedScope = this@SharedTransitionLayout,
                 contentScope = this@AnimatedContent,
                 onClockLongPress = { quickMenu = true },
+                hapticClockOn = gesture.hapticClock,
             )
+            }
               }
             }
             app.quiet.launcher.feature.quick.QuickActionsSheet(
@@ -194,14 +218,16 @@ private fun HomeContent(
     usage: UsageToday, usagePerm: Boolean, showUsage: Boolean, favourites: List<AppEntry>, oneThing: String,
     nowPlaying: NowPlaying?, playerOpen: Boolean,
     onOpenPlayer: () -> Unit, onCardLongPress: () -> Unit, onBackgroundLongPress: () -> Unit, onOpenSearch: () -> Unit, onOpenUsage: () -> Unit,
-    onLaunch: (AppEntry) -> Unit, onAppLongPress: (AppEntry) -> Unit,
+    onLaunch: (AppEntry, InkHandle) -> Unit, onAppLongPress: (AppEntry) -> Unit,
     swipeUp: Boolean, swipeDown: Boolean,
     sharedScope: SharedTransitionScope,
     contentScope: AnimatedVisibilityScope? = null,
     onClockLongPress: () -> Unit = {},
+    hapticClockOn: Boolean = false,
 ) {
     val ctx = LocalContext.current
     val c = Q.colors
+    val clock = rememberHapticClockState(Q.reducedMotion)
     Column(
         Modifier
             .fillMaxSize()
@@ -228,8 +254,8 @@ private fun HomeContent(
             },
     ) {
         Spacer(Modifier.height(56.dp))
-        // Clock: tap for alarms.
-        // Clock: tap for alarms, hold for quick focus actions. It morphs into the focus countdown.
+        // Clock: tap for alarms; hold to feel the time (or, with that off, for quick focus actions).
+        // It morphs into the focus countdown.
         BasicText(
             Format.clock(minute, is24h),
             style = QType.clock(112.sp).copy(color = c.ink),
@@ -243,7 +269,10 @@ private fun HomeContent(
                         )
                     } else Modifier
                 )
-                .pressable(pressedScale = 0.99f, pressedAlpha = 0.7f, onLongPress = onClockLongPress) { SystemActions.alarms(ctx) },
+                .then(
+                    if (hapticClockOn) Modifier.hapticClock(clock, c.ink, c.edge) { SystemActions.alarms(ctx) }
+                    else Modifier.pressable(pressedScale = 0.99f, pressedAlpha = 0.7f, onLongPress = onClockLongPress) { SystemActions.alarms(ctx) }
+                ),
         )
         Spacer(Modifier.height(18.dp))
         BasicText(Format.longDate(minute), style = QType.body(17.sp).copy(color = c.muted))
@@ -275,11 +304,13 @@ private fun HomeContent(
           val fontSp = (26f * (rowH / 52.dp)).coerceAtLeast(21f)
           Column {
             shown.forEach { app ->
+                val ink = remember(app.key.id) { InkHandle(app.key.id) }
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .height(rowH)
-                        .pressable(onLongPress = { onAppLongPress(app) }) { onLaunch(app) },
+                        .inkLabel(ink)
+                        .pressable(onLongPress = { onAppLongPress(app) }) { onLaunch(app, ink) },
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     BasicText(app.label, style = QType.favourite(fontSp.sp).copy(color = c.ink), maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -11,6 +11,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import app.quiet.launcher.feature.focus.engine.AppBlock
 import app.quiet.launcher.feature.focus.engine.AppRule
 import app.quiet.launcher.feature.focus.engine.Behaviour
@@ -90,6 +92,15 @@ data class IntentionEntity(
     val minutes: Int,
 )
 
+/** One focus session as it actually ran (recorded when it ends). Feeds the streak map and the day receipt. */
+@Entity(tableName = "focus_session", indices = [Index("startMs")])
+data class FocusSessionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val startMs: Long,
+    val endMs: Long,
+    val plannedEndMs: Long,
+)
+
 @Dao
 interface FocusDao {
     @Query("SELECT * FROM app_rule")
@@ -133,11 +144,20 @@ interface FocusDao {
 
     @Query("DELETE FROM intention WHERE atMs < :beforeMs")
     suspend fun deleteIntentionsBefore(beforeMs: Long)
+
+    @Insert
+    suspend fun insertSession(s: FocusSessionEntity)
+
+    @Query("SELECT * FROM focus_session ORDER BY startMs ASC")
+    fun observeSessions(): Flow<List<FocusSessionEntity>>
+
+    @Query("SELECT * FROM focus_session WHERE endMs >= :sinceMs ORDER BY startMs ASC")
+    suspend fun sessionsSince(sinceMs: Long): List<FocusSessionEntity>
 }
 
 @Database(
-    entities = [AppRuleEntity::class, BlockEntity::class, ScheduleEntity::class, IntentionEntity::class],
-    version = 1,
+    entities = [AppRuleEntity::class, BlockEntity::class, ScheduleEntity::class, IntentionEntity::class, FocusSessionEntity::class],
+    version = 2,
     exportSchema = false,
 )
 abstract class FocusDatabase : RoomDatabase() {
@@ -146,8 +166,20 @@ abstract class FocusDatabase : RoomDatabase() {
     companion object {
         @Volatile private var instance: FocusDatabase? = null
 
+        /** 1 -> 2: focus session history (nothing before this version was recorded). */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `focus_session` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`startMs` INTEGER NOT NULL, `endMs` INTEGER NOT NULL, `plannedEndMs` INTEGER NOT NULL)",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_focus_session_startMs` ON `focus_session` (`startMs`)")
+            }
+        }
+
         fun get(context: Context): FocusDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, FocusDatabase::class.java, "focus.db")
+                .addMigrations(MIGRATION_1_2)
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
                 .also { instance = it }

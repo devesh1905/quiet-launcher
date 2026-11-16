@@ -11,7 +11,8 @@ interface AppsRepository {
     /** Favourites in user order. */
     val favourites: Flow<List<AppEntry>>
     suspend fun refresh()
-    fun launch(key: AppKey, sourceBounds: android.graphics.Rect? = null)
+    /** [options]: ActivityOptions for the open animation (used only when the app starts straight away). */
+    fun launch(key: AppKey, sourceBounds: android.graphics.Rect? = null, options: android.os.Bundle? = null)
     fun openAppInfo(key: AppKey)
     fun uninstall(key: AppKey)
     suspend fun setFavourite(key: AppKey, favourite: Boolean)
@@ -58,6 +59,9 @@ interface ArtRepository {
     suspend fun show(id: String)
     /** Delete one of your own artworks. */
     suspend fun removeUserArtwork(id: String)
+    /** Paintings you keep for good (never cleaned out of the cache), most recently added first. */
+    val favourites: StateFlow<List<Artwork>>
+    suspend fun setFavourite(id: String, favourite: Boolean)
 }
 
 data class BatteryState(val level: Float, val charging: Boolean)

@@ -24,6 +24,9 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import app.quiet.launcher.core.data.NowPlayingRepository
 import app.quiet.launcher.core.model.NowPlaying
 import app.quiet.launcher.core.platform.Format
@@ -54,11 +57,16 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
     var root by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var artRect by remember { mutableStateOf<Rect?>(null) }
 
+    // The cover breathes while music plays and the screen is on; paused, it settles and holds still.
+    val resumed = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value.isAtLeast(Lifecycle.State.RESUMED)
+    val breath = rememberBreath(ctx.animate && np.isPlaying && resumed)
+
     Box(modifier.fillMaxSize().background(c.bg).onGloballyPositioned { root = it }) {
         AmbientField(
             palette = np.palette, artRect = artRect, modifier = Modifier.fillMaxSize(),
             maxLum = if (np.isPlaying) 0.028f else 0.011f, glow = 1.3f, pool = 0.32f,
             strength = ambientStrength, running = ctx.animate && np.isPlaying, fallbackArt = np.track.art,
+            glowScale = { 1f + Breath.GLOW * breath.floatValue },
         )
         Column(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars).padding(horizontal = 28.dp),
@@ -91,7 +99,8 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
                     .fillMaxWidth()
                     .aspectRatio(1f, matchHeightConstraintsFirst = true)
                     .graphicsLayer {
-                        scaleX = artScale; scaleY = artScale
+                        val s = artScale * (1f + Breath.SCALE * breath.floatValue)
+                        scaleX = s; scaleY = s
                         transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
                         // Dim and desaturate while paused (brightness .5, saturate .55).
                         alpha = 1f - 0.45f * dim
@@ -124,6 +133,29 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
             Spacer(Modifier.height(ctx.bottomReserve))
         }
     }
+}
+
+/**
+ * The breath level (0..1) on a fixed slow cycle ([Breath.PERIOD_MS]), ticking at about 24 fps like
+ * the field (it moves a fraction of a pixel per frame). When [running] goes false it eases back
+ * to rest and stops asking for frames.
+ */
+@Composable
+private fun rememberBreath(running: Boolean): MutableFloatState {
+    val level = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(running) {
+        if (!running) {
+            if (level.floatValue > 0f) androidx.compose.animation.core.animate(level.floatValue, 0f, animationSpec = tween(600)) { v, _ -> level.floatValue = v }
+            return@LaunchedEffect
+        }
+        // Pick up from the current level (on the rising half) so a resume never jumps.
+        val start = withFrameNanos { it } - Breath.msFor(level.floatValue) * 1_000_000L
+        while (true) {
+            withFrameNanos { now -> level.floatValue = Breath.at((now - start) / 1_000_000L) }
+            kotlinx.coroutines.delay(38)
+        }
+    }
+    return level
 }
 
 @Suppress("unused") private val keepMatrix = ColorMatrix()

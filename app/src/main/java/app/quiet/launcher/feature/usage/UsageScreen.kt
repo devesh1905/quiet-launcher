@@ -205,6 +205,9 @@ private fun Content(today: UsageToday, week: WeekUsage?) {
         if (today.pickups == 1) "1 pickup today" else "${today.pickups} pickups today",
         QType.body(), c.ink,
     )
+
+    SectionHeader("Day receipt")
+    app.quiet.launcher.feature.receipt.ReceiptEntry()
 }
 
 @Composable

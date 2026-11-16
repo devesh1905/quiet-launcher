@@ -37,6 +37,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.quiet.launcher.container
 import app.quiet.launcher.core.model.AppEntry
 import app.quiet.launcher.designsystem.*
+import app.quiet.launcher.feature.gesture.GesturePrefs
+import app.quiet.launcher.feature.gesture.Ink
+import app.quiet.launcher.feature.gesture.InkHandle
+import app.quiet.launcher.feature.gesture.InkHost
+import app.quiet.launcher.feature.gesture.inkLabel
 import kotlinx.coroutines.launch
 import java.text.Normalizer
 
@@ -76,6 +81,10 @@ fun AppsScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val view = androidx.compose.ui.platform.LocalView.current
+    val gesture by remember { GesturePrefs.get(ctx) }.state.collectAsStateWithLifecycle()
+    val inkOn = gesture.ink && !Q.reducedMotion
+    InkHost()
     BackHandler { query = ""; keyboard?.hide(); onBack() }
 
     // Focus only while this page is in front: focusing off-screen would pull the pager here.
@@ -162,12 +171,15 @@ fun AppsScreen(
                             r.letter.toString(), style = QType.small(13.sp).copy(color = c.muted),
                             modifier = Modifier.padding(top = 18.dp, bottom = 4.dp),
                         )
-                        is Row.App -> Box(
+                        is Row.App -> {
+                          val ink = remember(r.app.key.id) { InkHandle(r.app.key.id) }
+                          Box(
                             Modifier
                                 .fillMaxWidth()
                                 .height(50.dp)
+                                .inkLabel(ink)
                                 .pressable(onLongPress = { onAppLongPress(r.app) }) {
-                                    container.apps.launch(r.app.key); query = ""
+                                    Ink.open(view, r.app.key, ink, inkOn, scope); query = ""
                                 },
                             contentAlignment = Alignment.CenterStart,
                         ) {
@@ -178,6 +190,7 @@ fun AppsScreen(
                                     BasicText("work", style = QType.small(12.sp).copy(color = c.muted))
                                 }
                             }
+                          }
                         }
                     }
                 }

@@ -158,5 +158,22 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- Day receipt: the evening notification and the receipt itself. -->
+        <receiver android:name=".feature.receipt.ReceiptAlarmReceiver" android:exported="false" />
+        <activity android:name=".feature.receipt.ReceiptActivity" android:exported="false"
+            android:theme="@style/Theme.Quiet" android:launchMode="singleTask"
+            android:taskAffinity="app.quiet.launcher.receipt" android:excludeFromRecents="true"
+            android:screenOrientation="nosensor"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density" />
+
+        <!-- Share sheet images (receipt, story card) from the cache. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

@@ -47,6 +47,8 @@ class ArtRepositoryImpl(
     override val today: StateFlow<Artwork?> = _today
     private val _library = MutableStateFlow<List<Artwork>>(emptyList())
     override val library: StateFlow<List<Artwork>> = _library
+    private val _favourites = MutableStateFlow<List<Artwork>>(emptyList())
+    override val favourites: StateFlow<List<Artwork>> = _favourites
 
     private var index = ArtIndex()
     private val stateLock = Mutex()
@@ -152,6 +154,19 @@ class ArtRepositoryImpl(
         }
     }
 
+    override suspend fun setFavourite(id: String, favourite: Boolean) {
+        withContext(Dispatchers.IO) {
+            try {
+                loadJob.join()
+                mutate { ArtLogic.setFavourite(it, id, favourite, System.currentTimeMillis()) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Log.w(TAG, "setFavourite failed", e)
+            }
+        }
+    }
+
     override suspend fun removeUserArtwork(id: String) {
         withContext(Dispatchers.IO) {
             try {
@@ -252,6 +267,7 @@ class ArtRepositoryImpl(
         val cur = index.works.firstOrNull { it.id == index.currentId }
         _today.value = cur?.let(::toArtwork)
         _library.value = index.works.sortedByDescending { it.addedAt }.map(::toArtwork)
+        _favourites.value = ArtLogic.favourites(index).map(::toArtwork)
     }
 
     private fun toArtwork(w: StoredWork) = Artwork(

@@ -130,6 +130,33 @@ class ArtLogicTest {
         assertFalse(ArtLogic.inBackoff(ArtIndex(), now))
     }
 
+    @Test fun favourites_are_never_evicted_and_not_counted_as_cache() {
+        val now = t(2026, 6, 20)
+        val works = (1..9).map { work("w$it", now - (10 - it) * day) }
+        var idx = ArtIndex(works = works, currentId = "w9")
+        idx = ArtLogic.setFavourite(idx, "w1", true, now)
+        idx = ArtLogic.setFavourite(idx, "w2", true, now + 1)
+        assertEquals(7, ArtLogic.cachedWorks(idx).size)
+        assertTrue(ArtLogic.toEvict(idx, now).isEmpty())
+        assertEquals(listOf("w2", "w1"), ArtLogic.favourites(idx).map { it.id })
+        // Unfavourited, it rejoins the cache and can be cleaned out again.
+        idx = ArtLogic.setFavourite(idx, "w1", false, now)
+        assertEquals(listOf("w1"), ArtLogic.toEvict(idx, now).map { it.id })
+    }
+
+    @Test fun a_favourite_comes_back_about_every_two_weeks() {
+        val now = t(2026, 6, 20)
+        val fav = work("fav", now - 100 * day).copy(favourite = true, favouritedAt = now - 30 * day)
+        val fresh = work("fresh", now - day)
+        val base = ArtIndex(works = listOf(fav, fresh, work("cur", now - 2 * day)), currentId = "cur")
+        // Last shown 20 days ago: it wins over an unseen download.
+        val due = base.copy(history = listOf(HistoryEntry("fav", now - 20 * day)))
+        assertEquals("fav", ArtLogic.pickNext(due, now)?.id)
+        // Shown 5 days ago: the unseen download goes first.
+        val notDue = base.copy(history = listOf(HistoryEntry("fav", now - 5 * day)))
+        assertEquals("fresh", ArtLogic.pickNext(notDue, now)?.id)
+    }
+
     @Test fun midnight_math() {
         val ms = ArtLogic.millisUntilNextMidnight(t(2026, 6, 1, 23), zone)
         assertEquals(3_600_000L, ms)

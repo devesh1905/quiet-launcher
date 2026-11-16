@@ -101,9 +101,21 @@ class FocusRepository(context: Context, private val scope: CoroutineScope, usage
         p[FocusPrefs.SHORT_VIDEO_OFF] = if (on) cur - ruleId else cur + ruleId
     }
 
-    suspend fun setSession(session: FocusSession?, dndPrevious: Int? = null) = prefsStore.edit { p ->
-        FocusPrefs.writeSession(p, session)
-        if (dndPrevious != null) p[FocusPrefs.DND_PREVIOUS] = dndPrevious
+    suspend fun setSession(session: FocusSession?, dndPrevious: Int? = null) {
+        var ended: FocusSession? = null
+        prefsStore.edit { p ->
+            ended = FocusPrefs.read(p).session
+            FocusPrefs.writeSession(p, session)
+            if (dndPrevious != null) p[FocusPrefs.DND_PREVIOUS] = dndPrevious
+        }
+        // One row per finished session, for streaks and the day receipt. Only the part that ran counts.
+        val e = ended
+        if (e != null && e.startedMs != session?.startedMs) {
+            val end = minOf(System.currentTimeMillis(), e.endsMs)
+            if (end - e.startedMs >= 60_000L) {
+                runCatching { dao.insertSession(FocusSessionEntity(startMs = e.startedMs, endMs = end, plannedEndMs = e.endsMs)) }
+            }
+        }
     }
 
     suspend fun saveEngine(state: EngineState) = prefsStore.edit { it[FocusPrefs.ENGINE] = FocusPrefs.encodeEngine(state) }

@@ -34,6 +34,9 @@ data class StoredWork(
     val file: String,
     val isUser: Boolean = false,
     val addedAt: Long,
+    /** Kept for good: never cleaned out of the cache, and comes back now and then. */
+    val favourite: Boolean = false,
+    val favouritedAt: Long = 0,
 )
 
 @Serializable
@@ -56,6 +59,8 @@ object ArtLogic {
     const val NO_REPEAT_DAYS = 60L
     /** Your own artworks come back about once a week each. */
     const val USER_REPEAT_DAYS = 7L
+    /** One favourite comes back about every two weeks (all favourites together, not each). */
+    const val FAVOURITE_REPEAT_DAYS = 14L
     const val BACKOFF_MS = 30 * 60_000L
     const val MIN_LONGEST_SIDE = 1000
     const val MAX_LONGEST_SIDE = 2400
@@ -131,7 +136,17 @@ object ArtLogic {
     fun selectCandidate(cands: List<ArtCandidate>, excludeIds: Set<String>, rnd: Random): ArtCandidate? =
         cands.filter { it.id !in excludeIds }.randomOrNull(rnd)
 
-    fun cachedWorks(index: ArtIndex) = index.works.filter { !it.isUser }
+    /** Museum works in the rotating cache; favourites are kept apart and never evicted. */
+    fun cachedWorks(index: ArtIndex) = index.works.filter { !it.isUser && !it.favourite }
+
+    /** Favourites, most recently added first. */
+    fun favourites(index: ArtIndex) = index.works.filter { it.favourite }.sortedByDescending { it.favouritedAt }
+
+    fun setFavourite(index: ArtIndex, id: String, favourite: Boolean, now: Long): ArtIndex =
+        index.copy(works = index.works.map { w ->
+            if (w.id != id || w.favourite == favourite) w
+            else w.copy(favourite = favourite, favouritedAt = if (favourite) now else 0)
+        })
 
     fun unseenCount(index: ArtIndex, now: Long): Int {
         val seen = recentIds(index.history, now)
@@ -141,8 +156,9 @@ object ArtLogic {
     /**
      * Next work to show, never the current one unless it is the only one:
      *  1. one of your own artworks not shown in the last [USER_REPEAT_DAYS] days (least recently shown);
-     *  2. a museum work not shown in the last 60 days (newest download first);
-     *  3. otherwise whatever was shown longest ago.
+     *  2. if no favourite was shown in the last [FAVOURITE_REPEAT_DAYS] days, the one shown longest ago;
+     *  3. a museum work not shown in the last 60 days (newest download first);
+     *  4. otherwise whatever was shown longest ago.
      */
     fun pickNext(index: ArtIndex, now: Long): StoredWork? {
         val all = index.works
@@ -152,8 +168,13 @@ object ArtLogic {
         val userRecent = recentIds(index.history, now, USER_REPEAT_DAYS)
         others.filter { it.isUser && it.id !in userRecent }
             .minByOrNull { lastShown[it.id] ?: 0L }?.let { return it }
+        val favs = all.filter { it.favourite && !it.isUser }
+        val favRecent = recentIds(index.history, now, FAVOURITE_REPEAT_DAYS)
+        if (favs.none { it.id in favRecent }) {
+            others.filter { it.favourite && !it.isUser }.minByOrNull { lastShown[it.id] ?: 0L }?.let { return it }
+        }
         val seen = recentIds(index.history, now)
-        val unseen = others.filter { !it.isUser && it.id !in seen }
+        val unseen = others.filter { !it.isUser && !it.favourite && it.id !in seen }
         if (unseen.isNotEmpty()) return unseen.maxByOrNull { it.addedAt }
         return others.minByOrNull { lastShown[it.id] ?: 0L }
     }

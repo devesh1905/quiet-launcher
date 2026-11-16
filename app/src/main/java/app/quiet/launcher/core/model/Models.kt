@@ -120,4 +120,7 @@ data class LauncherSettings(
     val latitude: Double = 28.61,
     val longitude: Double = 77.21,
     val reducedMotion: Boolean = false,
+    /** A quiet notification at [receiptMinute] (minutes after midnight) opens the day receipt. */
+    val receiptEnabled: Boolean = true,
+    val receiptMinute: Int = 22 * 60,
 )

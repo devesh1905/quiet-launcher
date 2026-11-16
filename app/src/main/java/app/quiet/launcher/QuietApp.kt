@@ -8,6 +8,7 @@ import app.quiet.launcher.feature.media.NowPlayingRepositoryImpl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class QuietApp : Application() {
     lateinit var container: AppContainer
@@ -24,6 +25,8 @@ class QuietApp : Application() {
         app.quiet.launcher.feature.monochrome.MonochromeController.get(this).start()
         app.quiet.launcher.feature.focus.FocusService.sync(this)
         app.quiet.launcher.feature.focus.PaymentGuard.resume(this)
+        // Day receipt: off the main thread, a prefs read and at most one inexact alarm per boot.
+        container.appScope.launch { app.quiet.launcher.feature.receipt.ReceiptScheduler.ensure(this@QuietApp) }
     }
 }
 

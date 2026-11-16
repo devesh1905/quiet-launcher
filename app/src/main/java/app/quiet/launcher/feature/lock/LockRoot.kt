@@ -68,6 +68,10 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
     val minute by container.device.minuteTick.collectAsStateWithLifecycle()
     val usage by container.usage.today.collectAsStateWithLifecycle()
     val art by container.art.today.collectAsStateWithLifecycle()
+    val favourites by container.art.favourites.collectAsStateWithLifecycle()
+    val artIsFavourite = art?.let { a -> favourites.any { it.id == a.id } } == true
+    // Bumped when today's painting is added to favourites: the scene shows a small heart.
+    var heartPulse by remember { mutableIntStateOf(0) }
     val np by container.nowPlaying.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -164,7 +168,7 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
             return
         }
         when (style) {
-            LockStyle.MASTERPIECE -> MasterpieceScene(lc, onArtLongPress = if (animate) ({ artPressHandled = true; paintingMenu = true }) else null)
+            LockStyle.MASTERPIECE -> MasterpieceScene(lc, onArtLongPress = if (animate) ({ artPressHandled = true; paintingMenu = true }) else null, heart = if (allowMusic) heartPulse else 0)
             LockStyle.CANVAS -> QuietCanvasScene(lc)
             LockStyle.SKY -> SkyScene(lc)
             LockStyle.TYPESET -> TypesetScene(lc)
@@ -327,6 +331,14 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
         app.quiet.launcher.feature.apps.QuietSheet(visible = paintingMenu, onDismiss = { paintingMenu = false }) {
             BasicText(art?.title ?: "Today’s painting", style = QType.labelTitle(24.sp).copy(color = c.ink), modifier = Modifier.padding(top = 12.dp))
             BasicText(listOfNotNull(art?.artist, art?.year).joinToString(", "), style = QType.secondary(14.sp).copy(color = c.muted), modifier = Modifier.padding(bottom = 12.dp))
+            art?.let { a ->
+                app.quiet.launcher.feature.apps.SheetAction(if (artIsFavourite) "Remove from favourites" else "Add to favourites") {
+                    val add = !artIsFavourite
+                    paintingMenu = false
+                    scope.launch { container.art.setFavourite(a.id, add) }
+                    if (add) { heartPulse++; haptic.performHapticFeedback(HapticFeedbackType.Confirm) }
+                }
+            }
             app.quiet.launcher.feature.apps.SheetAction("Show another painting") {
                 scope.launch { container.art.skip() }; paintingMenu = false
             }

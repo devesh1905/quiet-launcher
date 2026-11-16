@@ -64,6 +64,8 @@ private object K {
     val latitude = doublePreferencesKey("latitude")
     val longitude = doublePreferencesKey("longitude")
     val reducedMotion = booleanPreferencesKey("reducedMotion")
+    val receiptEnabled = booleanPreferencesKey("receiptEnabled")
+    val receiptMinute = intPreferencesKey("receiptMinute")
 }
 
 /** Parses an enum by name, falling back to [default] for missing or unknown values. */
@@ -95,6 +97,8 @@ internal fun Preferences.toSettings(): LauncherSettings {
         latitude = this[K.latitude] ?: d.latitude,
         longitude = this[K.longitude] ?: d.longitude,
         reducedMotion = this[K.reducedMotion] ?: d.reducedMotion,
+        receiptEnabled = this[K.receiptEnabled] ?: d.receiptEnabled,
+        receiptMinute = this[K.receiptMinute] ?: d.receiptMinute,
     )
 }
 
@@ -121,4 +125,6 @@ internal fun MutablePreferences.writeSettings(s: LauncherSettings) {
     this[K.latitude] = s.latitude
     this[K.longitude] = s.longitude
     this[K.reducedMotion] = s.reducedMotion
+    this[K.receiptEnabled] = s.receiptEnabled
+    this[K.receiptMinute] = s.receiptMinute
 }

@@ -28,6 +28,7 @@ val NeutralPalette = intArrayOf(0xFF2A2724.toInt(), 0xFF8A7B6A.toInt(), 0xFF5C55
  * @param artRect the framed artwork in this composable's local px (top-left origin), or null.
  * @param maxLum luminance cap (0.028 player/lock, 0.014 Home); scaled by [strength].
  * @param glow light spill off the frame; @param pool 0 = fills screen, 1 = pools around the frame.
+ * @param glowScale read on the draw thread each frame (a lock player breath), so it never recomposes.
  */
 @Composable
 fun AmbientField(
@@ -42,6 +43,7 @@ fun AmbientField(
     fallbackArt: Bitmap? = null,
     fps: Int = 24,
     resolution: Float = 0.5f,
+    glowScale: () -> Float = { 1f },
 ) {
     val reduced = Q.reducedMotion
     val light = !Q.colors.isDark
@@ -83,7 +85,7 @@ fun AmbientField(
             } else {
                 setFloatUniform("u_rect", 0f, 0f, 0f, 0f)
             }
-            setFloatUniform("u_glow", glow)
+            setFloatUniform("u_glow", glow * glowScale())
             setFloatUniform("u_pool", pool)
         }
     } else if (fallbackArt != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

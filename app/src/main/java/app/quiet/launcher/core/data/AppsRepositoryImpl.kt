@@ -179,11 +179,12 @@ class AppsRepositoryImpl(context: Context, private val scope: CoroutineScope) : 
 
     private fun userFor(key: AppKey): UserHandle? = userManager.getUserForSerialNumber(key.userSerial)
 
-    override fun launch(key: AppKey, sourceBounds: Rect?) {
+    override fun launch(key: AppKey, sourceBounds: Rect?, options: android.os.Bundle?) {
         val go = {
-            // The focus gate may show a pause / time question first and launch the app itself afterwards.
+            // The focus gate may show a pause / time question first and launch the app itself afterwards
+            // (from its own screen, so the Home reveal animation is left out there).
             if (app.quiet.launcher.feature.focus.FocusGate.beforeLaunch(appContext, key.packageName) { rawLaunch(key, sourceBounds) }) {
-                rawLaunch(key, sourceBounds)
+                rawLaunch(key, sourceBounds, options)
             }
         }
         // Payment apps refuse to run with precision mode on: switch it off first and give the system a moment.
@@ -195,10 +196,10 @@ class AppsRepositoryImpl(context: Context, private val scope: CoroutineScope) : 
         }
     }
 
-    private fun rawLaunch(key: AppKey, sourceBounds: Rect?) {
+    private fun rawLaunch(key: AppKey, sourceBounds: Rect?, options: android.os.Bundle? = null) {
         val user = userFor(key) ?: return
         try {
-            launcherApps.startMainActivity(ComponentName(key.packageName, key.activityName), user, sourceBounds, null)
+            launcherApps.startMainActivity(ComponentName(key.packageName, key.activityName), user, sourceBounds, options)
         } catch (e: Exception) { // ActivityNotFoundException, SecurityException, IllegalStateException
             Log.w(TAG, "Could not launch ${key.id}", e)
         }

@@ -136,6 +136,10 @@ fun SettingsScreen(
     val library by container.art.library.collectAsState()
     val today by container.art.today.collectAsState()
     var openArt by remember { mutableStateOf<Artwork?>(null) }
+    var shareArt by remember { mutableStateOf<Artwork?>(null) }
+    val gesturePrefs = remember { app.quiet.launcher.feature.gesture.GesturePrefs.get(ctx) }
+    val gesture by gesturePrefs.state.collectAsState()
+    var lettersOpen by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) pendingUri = uri
     }
@@ -167,6 +171,23 @@ fun SettingsScreen(
                 ValueRow("Monochrome", "", onClick = onOpenMonochrome)
                 ValueRow("Hidden apps", "", onClick = onOpenHidden)
                 ValueRow("Screen time", "", onClick = onOpenUsage)
+                SwitchRow("Day receipt in the evening", s.receiptEnabled) { v ->
+                    update { it.copy(receiptEnabled = v) }
+                    app.quiet.launcher.feature.receipt.ReceiptScheduler.update(ctx, v, s.receiptMinute)
+                }
+                if (s.receiptEnabled) {
+                    StepperRow("Receipt time", "%02d:%02d".format(s.receiptMinute / 60, s.receiptMinute % 60),
+                        onMinus = {
+                            val m = (s.receiptMinute - 30).coerceIn(18 * 60, 23 * 60 + 30)
+                            update { it.copy(receiptMinute = m) }
+                            app.quiet.launcher.feature.receipt.ReceiptScheduler.update(ctx, true, m)
+                        },
+                        onPlus = {
+                            val m = (s.receiptMinute + 30).coerceIn(18 * 60, 23 * 60 + 30)
+                            update { it.copy(receiptMinute = m) }
+                            app.quiet.launcher.feature.receipt.ReceiptScheduler.update(ctx, true, m)
+                        })
+                }
             }
 
             section("Home") {
@@ -211,6 +232,8 @@ fun SettingsScreen(
                     currentId = today?.id,
                     onOpen = { openArt = it },
                 )
+                today?.let { t -> ValueRow("Share today's painting", "", onClick = { shareArt = t }) }
+                app.quiet.launcher.feature.art.FavouritesSection()
                 Label("Ambient colour strength")
                 SegmentedRow(
                     listOf("Off", "Subtle", "Full"),
@@ -233,6 +256,7 @@ fun SettingsScreen(
                     selected = s.theme.ordinal,
                 ) { i -> update { it.copy(theme = ThemeMode.entries[i]) } }
                 SwitchRow("Reduce motion", s.reducedMotion) { v -> update { it.copy(reducedMotion = v) } }
+                SwitchRow("Ink when opening apps", gesture.ink) { v -> gesturePrefs.setInk(v) }
             }
 
             section("Gestures") {
@@ -240,6 +264,11 @@ fun SettingsScreen(
                 SwitchRow("Swipe down for notifications", s.swipeDownNotifications) { v -> update { it.copy(swipeDownNotifications = v) } }
                 SwitchRow("Double tap to lock", s.doubleTapLock) { v -> update { it.copy(doubleTapLock = v) } }
                 SwitchRow("Open keyboard in All apps", s.autoKeyboard) { v -> update { it.copy(autoKeyboard = v) } }
+                SwitchRow("Draw a letter to open an app", gesture.letters) { v -> gesturePrefs.setLetters(v) }
+                if (gesture.letters) {
+                    ValueRow("Letters", app.quiet.launcher.feature.gesture.lettersSummary(gesture), onClick = { lettersOpen = true })
+                }
+                SwitchRow("Hold the clock to feel the time", gesture.hapticClock) { v -> gesturePrefs.setHapticClock(v) }
             }
 
             section("Permissions") {
@@ -292,8 +321,13 @@ fun SettingsScreen(
                 openArt = null
                 scope.launch { container.art.removeUserArtwork(w.id) }
             },
+            onShare = { openArt = null; shareArt = w },
         )
     }
+
+    app.quiet.launcher.feature.gesture.LetterAppsSheet(visible = lettersOpen, onDismiss = { lettersOpen = false })
+
+    shareArt?.let { w -> app.quiet.launcher.feature.share.ShareCardDialog(w, onDismiss = { shareArt = null }) }
 
     pendingUri?.let { uri ->
         AddArtworkDialog(
@@ -654,7 +688,7 @@ private fun YourArtworks(works: List<Artwork>, currentId: String?, onOpen: (Artw
 }
 
 @Composable
-private fun ArtworkDialog(work: Artwork, showing: Boolean, onDismiss: () -> Unit, onShow: () -> Unit, onRemove: () -> Unit) {
+private fun ArtworkDialog(work: Artwork, showing: Boolean, onDismiss: () -> Unit, onShow: () -> Unit, onRemove: () -> Unit, onShare: () -> Unit = {}) {
     val shape = RoundedCornerShape(20.dp)
     val bmp = app.quiet.launcher.feature.lock.rememberFileBitmap(work.imagePath, maxSide = 1000)
     var confirmRemove by remember { mutableStateOf(false) }
@@ -677,6 +711,8 @@ private fun ArtworkDialog(work: Artwork, showing: Boolean, onDismiss: () -> Unit
                 DialogButton(if (confirmRemove) "Remove for good" else "Remove", false) {
                     if (confirmRemove) onRemove() else confirmRemove = true
                 }
+                Spacer(Modifier.width(8.dp))
+                DialogButton("Share", false, onClick = onShare)
                 Spacer(Modifier.width(8.dp))
                 DialogButton(if (showing) "Showing today" else "Show now", true) { if (showing) onDismiss() else onShow() }
             }
