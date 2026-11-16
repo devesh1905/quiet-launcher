@@ -174,12 +174,17 @@ class FocusRuntime private constructor(private val app: Context) {
                 }.toSet()
             }
             repo.defaultWatched.value = watched
-            repo.alwaysAllowed.value = alwaysAllowedPackages()
+            val safe = withContext(Dispatchers.IO) { pkgs.filter { PaymentGuard.isPayment(app, it) }.toSet() }
+            repo.alwaysAllowed.value = alwaysAllowedPackages() + safe
         }
     }
 
     private fun alwaysAllowedPackages(): Set<String> {
-        val out = mutableSetOf(app.packageName, "com.android.systemui", "com.android.settings")
+        // Payment, bank and authenticator apps are added in computeDefaults; these are the system ones.
+        val out = mutableSetOf(
+            app.packageName, "com.android.systemui", "com.android.settings",
+            "com.miui.securitycenter", "com.android.permissioncontroller", "com.google.android.permissioncontroller",
+        )
         try {
             (app.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager)?.defaultDialerPackage?.let { out += it }
         } catch (_: SecurityException) {

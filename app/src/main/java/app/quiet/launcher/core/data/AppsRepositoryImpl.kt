@@ -180,9 +180,18 @@ class AppsRepositoryImpl(context: Context, private val scope: CoroutineScope) : 
     private fun userFor(key: AppKey): UserHandle? = userManager.getUserForSerialNumber(key.userSerial)
 
     override fun launch(key: AppKey, sourceBounds: Rect?) {
-        // The focus gate may show a pause / time question first and launch the app itself afterwards.
-        if (app.quiet.launcher.feature.focus.FocusGate.beforeLaunch(appContext, key.packageName) { rawLaunch(key, sourceBounds) }) {
-            rawLaunch(key, sourceBounds)
+        val go = {
+            // The focus gate may show a pause / time question first and launch the app itself afterwards.
+            if (app.quiet.launcher.feature.focus.FocusGate.beforeLaunch(appContext, key.packageName) { rawLaunch(key, sourceBounds) }) {
+                rawLaunch(key, sourceBounds)
+            }
+        }
+        // Payment apps refuse to run with precision mode on: switch it off first and give the system a moment.
+        if (app.quiet.launcher.feature.focus.PaymentGuard.beforeLaunch(appContext, key.packageName)) {
+            android.os.Handler(android.os.Looper.getMainLooper())
+                .postDelayed({ go() }, app.quiet.launcher.feature.focus.PaymentGuard.LAUNCH_DELAY_MS)
+        } else {
+            go()
         }
     }
 

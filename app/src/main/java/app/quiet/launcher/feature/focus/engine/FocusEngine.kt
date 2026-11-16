@@ -42,6 +42,8 @@ class FocusEngine(private val clock: FocusClock, initial: EngineState = EngineSt
 
     /** The block that ends last among all reasons that apply to [pkg] now, or null. */
     fun blockFor(pkg: String, snap: FocusSnapshot, nowMs: Long = clock.nowMs()): BlockInfo? {
+        // Phone, payment, bank and security apps are never blocked: not by sessions, blocks or schedules.
+        if (pkg in snap.alwaysAllowed) return null
         var best: BlockInfo? = null
         fun offer(b: BlockInfo) {
             val cur = best
@@ -75,6 +77,7 @@ class FocusEngine(private val clock: FocusClock, initial: EngineState = EngineSt
     /** Decision without side effects (besides forgetting a visit that has gone stale). */
     fun evaluateOpen(pkg: String, snap: FocusSnapshot, nowMs: Long = clock.nowMs()): OpenDecision {
         rollDay(nowMs)
+        if (pkg in snap.alwaysAllowed) return OpenDecision.Proceed
         blockFor(pkg, snap, nowMs)?.let { return OpenDecision.Blocked(it) }
         if (!snap.config.reminderEnabled || !snap.isWatched(pkg)) return OpenDecision.Proceed
         dropStaleVisit(pkg, nowMs)

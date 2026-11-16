@@ -23,6 +23,7 @@ class QuietApp : Application() {
         app.quiet.launcher.service.LockService.startIfEnabled(this)
         app.quiet.launcher.feature.monochrome.MonochromeController.get(this).start()
         app.quiet.launcher.feature.focus.FocusService.sync(this)
+        app.quiet.launcher.feature.focus.PaymentGuard.resume(this)
     }
 }
 

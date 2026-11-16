@@ -96,7 +96,7 @@ data class FocusSnapshot(
     val usedTodayMs: Map<String, Long> = emptyMap(),
     /** Packages watched when the user has not set a rule (social, video, games). */
     val defaultWatched: Set<String> = emptySet(),
-    /** Never blocked by a focus session (dialer, our own app). */
+    /** Never blocked or gated: dialer, our own app, payment / bank / authenticator and security apps. */
     val alwaysAllowed: Set<String> = emptySet(),
     val shortVideo: ShortVideoConfig = ShortVideoConfig(),
 ) {

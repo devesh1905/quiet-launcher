@@ -56,6 +56,7 @@ the lock screen is a painting, not a notification wall. There are no streaks, po
 - A breathing pause before opening watched apps that grows with each open, an intention question, a floating time-left bar, daily limits per app
 - Block any app for 1 hour to 30 days, blocking schedules by weekday (overnight spans work), focus sessions with Do Not Disturb
 - Precision mode (optional accessibility service): blocks Shorts and Reels, blocks the website version of a blocked app in your browser, locks the screen on double tap
+- **Payment apps just work**: GPay, PhonePe, Paytm, BHIM and bank apps refuse to run while an accessibility service is on, so Quiet pauses precision mode before they open and turns it back on a minute after you leave. Payment, bank, authenticator and security apps are never blocked by sessions, blocks or schedules. A **Precision** Quick Settings tile switches it by hand
 - Notification filter: only the apps you allow can interrupt; everything else is held quietly for 7 days
 - Monochrome: grayscale for chosen apps, or everything during a wind-down window
 - Screen time screen: today, 7 days, per-app minutes and a plain weekly sentence

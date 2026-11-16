@@ -44,6 +44,8 @@ class QuietAccessibilityService : AccessibilityService() {
         val pkg = e.packageName?.toString() ?: return
         when (e.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                // A payment app opened some other way (notification, QR intent): step aside at once.
+                if (pkg != packageName && PaymentGuard.isPayment(this, pkg) && PaymentGuard.pause(this)) return
                 val isActivity = isActivity(pkg, e.className?.toString())
                 tracker()?.onAccessibilityWindow(pkg, isActivity)
                 scan(pkg, force = true)
