@@ -33,7 +33,10 @@ import app.quiet.launcher.core.platform.Format
 import app.quiet.launcher.designsystem.*
 import app.quiet.launcher.designsystem.shader.AmbientField
 import app.quiet.launcher.feature.player.TransportControls
-import app.quiet.launcher.feature.player.rememberPosition
+import app.quiet.launcher.feature.player.SeekLine
+import app.quiet.launcher.feature.player.PlayerOrb
+import app.quiet.launcher.feature.player.rememberOrbState
+import app.quiet.launcher.core.model.PlayerControl
 
 /**
  * Lock-screen player (DESIGN-NOTES §8.3). Playing: the framed cover leads and the field spreads
@@ -41,7 +44,7 @@ import app.quiet.launcher.feature.player.rememberPosition
  * darkens as the field's cap eases from 0.028 to 0.011. One spring drives all of it.
  */
 @Composable
-fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository, ambientStrength: Float, modifier: Modifier = Modifier, onArtLongPress: () -> Unit = {}) {
+fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository, ambientStrength: Float, modifier: Modifier = Modifier, control: PlayerControl = PlayerControl.DROP, onArtLongPress: () -> Unit = {}) {
     val c = Q.colors
     val reduced = Q.reducedMotion
     val t = updateTransition(!np.isPlaying, label = "paused")
@@ -55,6 +58,8 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
     val progAlpha by t.animateFloat({ if (reduced) tween(0) else tween(400) }, label = "prog") { if (it) 0f else 1f }
 
     var root by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val orb = rememberOrbState()
+    val useOrb = control != PlayerControl.BUTTONS
     var artRect by remember { mutableStateOf<Rect?>(null) }
 
     // The cover breathes while music plays and the screen is on; paused, it settles and holds still.
@@ -92,7 +97,7 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
                 art = np.track.art, fallbackTitle = np.track.title, matColor = c.mat, matFraction = 15f / 332f,
                 contentKey = np.track.id, shadow = 26.dp,
                 modifier = Modifier
-                    .pointerInput(Unit) { detectTapGestures(onLongPress = { onArtLongPress() }) }
+                    .pointerInput(useOrb) { detectTapGestures(onLongPress = { onArtLongPress() }, onTap = if (useOrb) ({ repo.playPause() }) else null) }
                     // As big as the space allows (full width at most) while the controls still clear
                     // the fingerprint ring below.
                     .weight(1f, fill = false)
@@ -100,10 +105,15 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
                     .aspectRatio(1f, matchHeightConstraintsFirst = true)
                     .graphicsLayer {
                         val s = artScale * (1f + Breath.SCALE * breath.floatValue)
-                        scaleX = s; scaleY = s
+                        // The cover rides along with the orb: dragged, flung off and back in on a song change.
+                        val cx = orb.coverX
+                        val away = (kotlin.math.abs(cx) / size.width.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                        scaleX = s * (1f - 0.12f * away); scaleY = scaleX
+                        translationX = cx
+                        rotationZ = cx / 36.dp.toPx()
                         transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
                         // Dim and desaturate while paused (brightness .5, saturate .55).
-                        alpha = 1f - 0.45f * dim
+                        alpha = (1f - 0.45f * dim) * (1f - 0.8f * away)
                     }
                     .onGloballyPositioned { coords ->
                         val r = root ?: return@onGloballyPositioned
@@ -116,19 +126,10 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
                 AnimatedContent(np.track, transitionSpec = { fadeIn(tween(300, 160)) togetherWith fadeOut(tween(160)) }, label = "lbl") { tr ->
                     LockLabel(ctx, tr.title, tr.artist, listOfNotNull(tr.album, tr.year).joinToString(", ").ifBlank { null }, Modifier.fillMaxWidth())
                 }
-                Spacer(Modifier.height(18.dp))
-                Column(Modifier.graphicsLayer { alpha = progAlpha }) {
-                    val pos = rememberPosition(np)
-                    val dur = np.track.durationMs
-                    HairlineProgress(if (dur > 0) pos / dur.toFloat() else 0f, track = c.edgeOnField)
-                    Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                        BasicText(Format.mmss(pos), style = QType.secondary(13.sp).copy(color = c.muted))
-                        Spacer(Modifier.weight(1f))
-                        if (dur > 0) BasicText("-" + Format.mmss(dur - pos), style = QType.secondary(13.sp).copy(color = c.muted))
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                TransportControls(np.isPlaying, repo, c.edgeOnField)
+                // The seek line's touch band is 12 dp taller each side than the line it draws.
+                Spacer(Modifier.height(6.dp))
+                SeekLine(np, repo::seekTo, c.edgeOnField, 13.sp, Modifier.graphicsLayer { alpha = progAlpha })
+                if (useOrb) PlayerOrb(control, np, repo, orb, running = resumed) else TransportControls(np.isPlaying, repo, c.edgeOnField)
             }
             Spacer(Modifier.height(ctx.bottomReserve))
         }

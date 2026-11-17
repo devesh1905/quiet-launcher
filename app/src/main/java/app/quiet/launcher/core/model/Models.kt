@@ -92,6 +92,8 @@ data class Artwork(
 enum class LockStyle { MASTERPIECE, CANVAS, SKY, TYPESET, COVER }
 enum class LockFont { BODONI, INSTRUMENT, SHOULDERS }
 enum class ThemeMode { BLACK, LIGHT, SYSTEM }
+/** The lock-screen player's control: one of the play orbs, or the classic three buttons. */
+enum class PlayerControl { DROP, MARBLE, SUN, GLASS, BUTTONS }
 
 data class LauncherSettings(
     val theme: ThemeMode = ThemeMode.BLACK,
@@ -123,4 +125,5 @@ data class LauncherSettings(
     /** A quiet notification at [receiptMinute] (minutes after midnight) opens the day receipt. */
     val receiptEnabled: Boolean = true,
     val receiptMinute: Int = 22 * 60,
+    val playerControl: PlayerControl = PlayerControl.DROP,
 )

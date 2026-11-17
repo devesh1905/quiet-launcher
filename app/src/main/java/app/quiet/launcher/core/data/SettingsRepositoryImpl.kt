@@ -66,6 +66,7 @@ private object K {
     val reducedMotion = booleanPreferencesKey("reducedMotion")
     val receiptEnabled = booleanPreferencesKey("receiptEnabled")
     val receiptMinute = intPreferencesKey("receiptMinute")
+    val playerControl = stringPreferencesKey("playerControl")
 }
 
 /** Parses an enum by name, falling back to [default] for missing or unknown values. */
@@ -99,6 +100,7 @@ internal fun Preferences.toSettings(): LauncherSettings {
         reducedMotion = this[K.reducedMotion] ?: d.reducedMotion,
         receiptEnabled = this[K.receiptEnabled] ?: d.receiptEnabled,
         receiptMinute = this[K.receiptMinute] ?: d.receiptMinute,
+        playerControl = this[K.playerControl].toEnumOr(d.playerControl),
     )
 }
 
@@ -127,4 +129,5 @@ internal fun MutablePreferences.writeSettings(s: LauncherSettings) {
     this[K.reducedMotion] = s.reducedMotion
     this[K.receiptEnabled] = s.receiptEnabled
     this[K.receiptMinute] = s.receiptMinute
+    this[K.playerControl] = s.playerControl.name
 }

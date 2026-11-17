@@ -197,16 +197,9 @@ fun SharedTransitionScope.PlayerScreen(
                         titleStyle = QType.labelTitle(32.sp),
                     )
                 }
-                Spacer(Modifier.height(24.dp))
-                val pos = rememberPosition(np)
-                val dur = np.track.durationMs
-                HairlineProgress(if (dur > 0) pos / dur.toFloat() else 0f, track = c.edgeOnField)
-                Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                    BasicText(Format.mmss(pos), style = QType.secondary(14.sp).copy(color = c.muted))
-                    Spacer(Modifier.weight(1f))
-                    if (dur > 0) BasicText("-" + Format.mmss(dur - pos), style = QType.secondary(14.sp).copy(color = c.muted))
-                }
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(12.dp))
+                SeekLine(np, repo::seekTo, c.edgeOnField, 14.sp, labelGap = 6.dp)
+                Spacer(Modifier.height(8.dp))
                 TransportControls(np.isPlaying, repo, c.edgeOnField)
             }
             Spacer(Modifier.weight(1f))

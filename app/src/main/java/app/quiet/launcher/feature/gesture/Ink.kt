@@ -40,20 +40,19 @@ import kotlinx.coroutines.launch
 import kotlin.math.min
 
 /**
- * Ink transitions: the tapped name dissolves like ink while the app opens, and is drawn back in when
- * Home returns. The app is started first and never waits for the effect; the effect is a draw-layer
+ * Ink transitions: the tapped name dissolves like ink just before the app opens, and is simply there
+ * again when Home returns (no closing animation, so going home stays instant). The app is started first and never waits for the effect; the effect is a draw-layer
  * shader on that one row (AGSL on API 33+, blur and fade on 31-32, fade below), so rows that are not
  * animating draw exactly as before and nothing runs while idle.
  */
 object Ink {
-    private const val OUT_MS = 550
-    private const val BACK_MS = 550
+    private const val OUT_MS = 400
+    /** Only used when the launch did not happen: the name comes back quickly. */
+    private const val BACK_MS = 300
     /** The app is asked to open only when the dissolve has nearly finished, so the whole effect is seen on Home. */
-    private const val LEAD_MS = 500L
-    /** Home is resumed while the closing app is still shrinking over it: wait that out, then draw the name back. */
-    private const val BACK_DELAY_MS = 350L
+    private const val LEAD_MS = 350L
     /** If Home was not paused by then, the launch did not happen: draw the name back. */
-    private const val FAILSAFE_MS = 1500L
+    private const val FAILSAFE_MS = 1300L
 
     internal var activeId by mutableStateOf<String?>(null)
         private set
@@ -111,11 +110,12 @@ object Ink {
         if (activeId == null || !left) return
         job?.cancel()
         left = false
-        job = scope.launch { delay(BACK_DELAY_MS); back() }
+        // No closing animation: the name is simply back.
+        job = scope.launch { progress.snapTo(0f); activeId = null }
     }
 }
 
-/** Even pace, the same length as the dissolve, so returning reads as the open played backwards. */
+/** Eases the name back in when a launch did not happen. */
 private val InkEase = androidx.compose.animation.core.CubicBezierEasing(0.35f, 0f, 0.55f, 1f)
 
 /** Put once on each screen that opens apps with ink: redraws the name when Home comes back. */

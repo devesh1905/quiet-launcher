@@ -163,7 +163,7 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
         val lc = lockCtx.copy(animate = animate && !reduced)
         val playing = np
         if (allowMusic && playing != null && settings.lockShowMusic && playing.track.id.substringBefore('|') != musicHiddenTrack) {
-            LockPlayerScene(lc, playing, container.nowPlaying, settings.ambientStrength,
+            LockPlayerScene(lc, playing, container.nowPlaying, settings.ambientStrength, control = settings.playerControl,
                 onArtLongPress = { artPressHandled = true; musicMenu = true })
             return
         }

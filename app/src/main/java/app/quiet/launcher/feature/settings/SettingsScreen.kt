@@ -6,7 +6,16 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -16,6 +25,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -32,6 +42,8 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -42,17 +54,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -65,6 +81,7 @@ import app.quiet.launcher.core.model.LauncherSettings
 import androidx.compose.ui.graphics.asImageBitmap
 import app.quiet.launcher.core.model.LockFont
 import app.quiet.launcher.core.model.LockStyle
+import app.quiet.launcher.core.model.PlayerControl
 import app.quiet.launcher.core.model.ThemeMode
 import app.quiet.launcher.core.platform.Permissions
 import app.quiet.launcher.designsystem.Q
@@ -106,6 +123,24 @@ private fun styleName(style: LockStyle) = when (style) {
     LockStyle.COVER -> "Cover"
 }
 
+private object Page {
+    const val ROOT = "root"
+    const val FOCUS = "focus"
+    const val HOME = "home"
+    const val LOCK = "lock"
+    const val ART = "art"
+    const val LOOK = "look"
+    const val GESTURES = "gestures"
+    const val PERMISSIONS = "permissions"
+    const val ABOUT = "about"
+}
+
+private fun themeName(t: ThemeMode) = when (t) {
+    ThemeMode.BLACK -> "Black"
+    ThemeMode.LIGHT -> "Light"
+    ThemeMode.SYSTEM -> "System"
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
@@ -126,7 +161,8 @@ fun SettingsScreen(
     val s by container.settings.settings.collectAsState()
     var status by remember { mutableStateOf(readStatus(ctx)) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { status = readStatus(ctx) }
-    BackHandler(onBack = onBack)
+    var page by rememberSaveable { mutableStateOf(Page.ROOT) }
+    BackHandler { if (page != Page.ROOT) page = Page.ROOT else onBack() }
 
     fun update(t: (LauncherSettings) -> LauncherSettings) {
         scope.launch { container.settings.update(t) }
@@ -143,164 +179,245 @@ fun SettingsScreen(
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) pendingUri = uri
     }
+    val rootList = rememberLazyListState()
+    val reduced = Q.reducedMotion
+    val back = { page = Page.ROOT }
 
     Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
-        LazyColumn(
-            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars),
-            contentPadding = PaddingValues(bottom = 48.dp),
-        ) {
-            item {
-                Box(
-                    Modifier.padding(start = 8.dp, top = 4.dp).size(44.dp).clickable(
-                        interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onBack,
-                    ),
-                    contentAlignment = Alignment.Center,
-                ) { Chevron(Q.colors.ink, left = true) }
-                Text(
-                    "Settings", QType.title(40.sp), Q.colors.ink,
-                    Modifier.padding(horizontal = Gutter).padding(top = 8.dp, bottom = 8.dp),
-                )
-            }
-
-            section("Focus and screen time") {
-                ValueRow("Start a focus session", "", onClick = onOpenFocusSession)
-                ValueRow("App time and pauses", "", onClick = onOpenFocus)
-                ValueRow("Blocking schedules", "", onClick = onOpenSchedules)
-                ValueRow("Precision mode", "", onClick = onOpenPrecision)
-                ValueRow("Notification filter", "", onClick = onOpenNotifications)
-                ValueRow("Monochrome", "", onClick = onOpenMonochrome)
-                ValueRow("Hidden apps", "", onClick = onOpenHidden)
-                ValueRow("Screen time", "", onClick = onOpenUsage)
-                SwitchRow("Day receipt in the evening", s.receiptEnabled) { v ->
-                    update { it.copy(receiptEnabled = v) }
-                    app.quiet.launcher.feature.receipt.ReceiptScheduler.update(ctx, v, s.receiptMinute)
+        AnimatedContent(
+            targetState = page,
+            modifier = Modifier.fillMaxSize(),
+            transitionSpec = {
+                if (reduced) {
+                    EnterTransition.None togetherWith ExitTransition.None
+                } else {
+                    val forward = targetState != Page.ROOT
+                    val spec = tween<IntOffset>(260)
+                    val fade = tween<Float>(200)
+                    (slideInHorizontally(spec) { w -> if (forward) w / 5 else -w / 5 } + fadeIn(fade)) togetherWith
+                        (slideOutHorizontally(spec) { w -> if (forward) -w / 5 else w / 5 } + fadeOut(fade))
                 }
-                if (s.receiptEnabled) {
-                    StepperRow("Receipt time", "%02d:%02d".format(s.receiptMinute / 60, s.receiptMinute % 60),
-                        onMinus = {
-                            val m = (s.receiptMinute - 30).coerceIn(18 * 60, 23 * 60 + 30)
-                            update { it.copy(receiptMinute = m) }
-                            app.quiet.launcher.feature.receipt.ReceiptScheduler.update(ctx, true, m)
-                        },
-                        onPlus = {
-                            val m = (s.receiptMinute + 30).coerceIn(18 * 60, 23 * 60 + 30)
-                            update { it.copy(receiptMinute = m) }
-                            app.quiet.launcher.feature.receipt.ReceiptScheduler.update(ctx, true, m)
-                        })
+            },
+            label = "settingsPage",
+        ) { key ->
+            when (key) {
+                Page.ROOT -> {
+                    val missing = listOf(status.home, status.usage, status.notifications, status.overlay, status.battery).count { !it }
+                    val artists = s.favouriteArtists.size
+                    LazyColumn(
+                        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars),
+                        state = rootList,
+                        contentPadding = PaddingValues(bottom = 48.dp),
+                    ) {
+                        item {
+                            PageHeader("Settings", QType.title(40.sp), onBack)
+                            Spacer(Modifier.height(16.dp))
+                            Hairline()
+                        }
+                        item { GroupRow("Focus and screen time", "Sessions, app limits, schedules, filters") { page = Page.FOCUS } }
+                        item { GroupRow("Home", "Usage, now playing, daily budget") { page = Page.HOME } }
+                        item {
+                            GroupRow(
+                                "Lock screen",
+                                if (s.lockEnabled) "${styleName(s.lockStyle)}, music, tonight's sky" else "Quiet lock screen off",
+                            ) { page = Page.LOCK }
+                        }
+                        item {
+                            GroupRow(
+                                "Art",
+                                "$artists favourite ${if (artists == 1) "artist" else "artists"}, your artworks",
+                            ) { page = Page.ART }
+                        }
+                        item {
+                            GroupRow(
+                                "Look and motion",
+                                themeName(s.theme) + if (s.reducedMotion) ", reduced motion" else "",
+                            ) { page = Page.LOOK }
+                        }
+                        item { GroupRow("Gestures", "Swipes, letters, the haptic clock") { page = Page.GESTURES } }
+                        item {
+                            GroupRow(
+                                "Permissions",
+                                when (missing) {
+                                    0 -> "All granted"
+                                    1 -> "1 needs access"
+                                    else -> "$missing need access"
+                                },
+                            ) { page = Page.PERMISSIONS }
+                        }
+                        item { GroupRow("About", "Quiet ${BuildConfig.VERSION_NAME}, licences") { page = Page.ABOUT } }
+                    }
                 }
-            }
 
-            section("Home") {
-                SwitchRow("Show usage on Home", s.showUsageOnHome) { v -> update { it.copy(showUsageOnHome = v) } }
-                SwitchRow("Show now playing on Home", s.showNowPlayingOnHome) { v -> update { it.copy(showNowPlayingOnHome = v) } }
-                SwitchRow("Colour glow from the artwork", s.homeGlow) { v -> update { it.copy(homeGlow = v) } }
-                StepperRow("Daily budget", formatMinutes(s.dailyBudgetMinutes),
-                    onMinus = { update { it.copy(dailyBudgetMinutes = (it.dailyBudgetMinutes - 30).coerceIn(30, 480)) } },
-                    onPlus = { update { it.copy(dailyBudgetMinutes = (it.dailyBudgetMinutes + 30).coerceIn(30, 480)) } })
-                TextFieldRow("One thing today", s.oneThingToday, "Optional") { v -> update { it.copy(oneThingToday = v) } }
-            }
-
-            section("Lock screen and art") {
-                SwitchRow("Art on the system lock screen", s.lockWallpaper) { v -> update { it.copy(lockWallpaper = v) } }
-                SwitchRow("Quiet lock screen on top", s.lockEnabled) { v -> update { it.copy(lockEnabled = v) } }
-                SwitchRow("Only when music plays", s.lockOnlyWithMusic) { v -> update { it.copy(lockOnlyWithMusic = v) } }
-                SwitchRow("Show music on the lock screen", s.lockShowMusic) { v -> update { it.copy(lockShowMusic = v) } }
-                ValueRow("Lock screen style", styleName(s.lockStyle), onClick = onOpenLockPicker)
-                FontChoiceRow(s.lockFont) { f -> update { it.copy(lockFont = f) } }
-                Label("Favourite artists")
-                FlowRow(
-                    Modifier.padding(horizontal = Gutter),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    ArtistChoices.forEach { name ->
-                        val on = name in s.favouriteArtists
-                        Chip(name, on) {
-                            update { cur ->
-                                val next = if (on) cur.favouriteArtists - name else cur.favouriteArtists + name
-                                if (next.isEmpty()) cur else cur.copy(favouriteArtists = next)
-                            }
+                Page.FOCUS -> SubPage("Focus and screen time", back) {
+                    block {
+                        ValueRow("Start a focus session", "", onClick = onOpenFocusSession)
+                        ValueRow("App time and pauses", "", onClick = onOpenFocus)
+                        ValueRow("Blocking schedules", "", onClick = onOpenSchedules)
+                        ValueRow("Precision mode", "", onClick = onOpenPrecision)
+                        ValueRow("Notification filter", "", onClick = onOpenNotifications)
+                        ValueRow("Monochrome", "", onClick = onOpenMonochrome)
+                        ValueRow("Hidden apps", "", onClick = onOpenHidden)
+                        ValueRow("Screen time", "", onClick = onOpenUsage)
+                    }
+                    subsection("Day receipt") {
+                        SwitchRow("Day receipt in the evening", s.receiptEnabled) { v ->
+                            update { it.copy(receiptEnabled = v) }
+                            app.quiet.launcher.feature.receipt.ReceiptScheduler.update(ctx, v, s.receiptMinute)
+                        }
+                        if (s.receiptEnabled) {
+                            StepperRow("Receipt time", "%02d:%02d".format(s.receiptMinute / 60, s.receiptMinute % 60),
+                                onMinus = {
+                                    val m = (s.receiptMinute - 30).coerceIn(18 * 60, 23 * 60 + 30)
+                                    update { it.copy(receiptMinute = m) }
+                                    app.quiet.launcher.feature.receipt.ReceiptScheduler.update(ctx, true, m)
+                                },
+                                onPlus = {
+                                    val m = (s.receiptMinute + 30).coerceIn(18 * 60, 23 * 60 + 30)
+                                    update { it.copy(receiptMinute = m) }
+                                    app.quiet.launcher.feature.receipt.ReceiptScheduler.update(ctx, true, m)
+                                })
                         }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
-                ValueRow("Add your own artwork", "", onClick = {
-                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                })
-                YourArtworks(
-                    works = library.filter { it.isUserProvided },
-                    currentId = today?.id,
-                    onOpen = { openArt = it },
-                )
-                today?.let { t -> ValueRow("Share today's painting", "", onClick = { shareArt = t }) }
-                app.quiet.launcher.feature.art.FavouritesSection()
-                Label("Ambient colour strength")
-                SegmentedRow(
-                    listOf("Off", "Subtle", "Full"),
-                    selected = when {
-                        s.ambientStrength <= 0.01f -> 0
-                        s.ambientStrength < 0.8f -> 1
-                        else -> 2
-                    },
-                ) { i -> update { it.copy(ambientStrength = floatArrayOf(0f, 0.6f, 1f)[i]) } }
-                Label("Location for Tonight's sky")
-                TextFieldRow("City", s.cityName, "City name") { v -> update { it.copy(cityName = v) } }
-                CoordinateRow("Latitude", s.latitude, -90.0, 90.0) { v -> update { it.copy(latitude = v) } }
-                CoordinateRow("Longitude", s.longitude, -180.0, 180.0) { v -> update { it.copy(longitude = v) } }
-            }
 
-            section("Display") {
-                Label("Theme")
-                SegmentedRow(
-                    listOf("Black", "Light", "System"),
-                    selected = s.theme.ordinal,
-                ) { i -> update { it.copy(theme = ThemeMode.entries[i]) } }
-                SwitchRow("Reduce motion", s.reducedMotion) { v -> update { it.copy(reducedMotion = v) } }
-                SwitchRow("Ink when opening apps", gesture.ink) { v -> gesturePrefs.setInk(v) }
-            }
+                Page.HOME -> SubPage("Home", back) {
+                    block {
+                        SwitchRow("Show usage on Home", s.showUsageOnHome) { v -> update { it.copy(showUsageOnHome = v) } }
+                        SwitchRow("Show now playing on Home", s.showNowPlayingOnHome) { v -> update { it.copy(showNowPlayingOnHome = v) } }
+                        SwitchRow("Colour glow from the artwork", s.homeGlow) { v -> update { it.copy(homeGlow = v) } }
+                        StepperRow("Daily budget", formatMinutes(s.dailyBudgetMinutes),
+                            onMinus = { update { it.copy(dailyBudgetMinutes = (it.dailyBudgetMinutes - 30).coerceIn(30, 480)) } },
+                            onPlus = { update { it.copy(dailyBudgetMinutes = (it.dailyBudgetMinutes + 30).coerceIn(30, 480)) } })
+                        TextFieldRow("One thing today", s.oneThingToday, "Optional") { v -> update { it.copy(oneThingToday = v) } }
+                    }
+                }
 
-            section("Gestures") {
-                SwitchRow("Swipe up for search", s.swipeUpSearch) { v -> update { it.copy(swipeUpSearch = v) } }
-                SwitchRow("Swipe down for notifications", s.swipeDownNotifications) { v -> update { it.copy(swipeDownNotifications = v) } }
-                SwitchRow("Double tap to lock", s.doubleTapLock) { v -> update { it.copy(doubleTapLock = v) } }
-                SwitchRow("Open keyboard in All apps", s.autoKeyboard) { v -> update { it.copy(autoKeyboard = v) } }
-                SwitchRow("Draw a letter to open an app", gesture.letters) { v -> gesturePrefs.setLetters(v) }
-                if (gesture.letters) {
-                    ValueRow("Letters", app.quiet.launcher.feature.gesture.lettersSummary(gesture), onClick = { lettersOpen = true })
+                Page.LOCK -> SubPage("Lock screen", back) {
+                    block {
+                        SwitchRow("Art on the system lock screen", s.lockWallpaper) { v -> update { it.copy(lockWallpaper = v) } }
+                        SwitchRow("Quiet lock screen on top", s.lockEnabled) { v -> update { it.copy(lockEnabled = v) } }
+                        SwitchRow("Only when music plays", s.lockOnlyWithMusic) { v -> update { it.copy(lockOnlyWithMusic = v) } }
+                        ValueRow("Lock screen style", styleName(s.lockStyle), onClick = onOpenLockPicker)
+                        FontChoiceRow(s.lockFont) { f -> update { it.copy(lockFont = f) } }
+                    }
+                    subsection("Music") {
+                        SwitchRow("Show music on the lock screen", s.lockShowMusic) { v -> update { it.copy(lockShowMusic = v) } }
+                        PlayerControlRow(s.playerControl) { c -> update { it.copy(playerControl = c) } }
+                        Label("Ambient colour strength")
+                        SegmentedRow(
+                            listOf("Off", "Subtle", "Full"),
+                            selected = when {
+                                s.ambientStrength <= 0.01f -> 0
+                                s.ambientStrength < 0.8f -> 1
+                                else -> 2
+                            },
+                        ) { i -> update { it.copy(ambientStrength = floatArrayOf(0f, 0.6f, 1f)[i]) } }
+                    }
+                    subsection("Tonight's sky") {
+                        Text(
+                            "Where you are, so the sky style shows the stars above you.",
+                            QType.secondary(14.sp), Q.colors.muted, Modifier.padding(horizontal = Gutter).padding(bottom = 4.dp),
+                        )
+                        TextFieldRow("City", s.cityName, "City name") { v -> update { it.copy(cityName = v) } }
+                        CoordinateRow("Latitude", s.latitude, -90.0, 90.0) { v -> update { it.copy(latitude = v) } }
+                        CoordinateRow("Longitude", s.longitude, -180.0, 180.0) { v -> update { it.copy(longitude = v) } }
+                    }
                 }
-                SwitchRow("Hold the clock to feel the time", gesture.hapticClock) { v -> gesturePrefs.setHapticClock(v) }
-            }
 
-            section("Permissions") {
-                PermissionRow("Default home app", status.home) {
-                    Permissions.launch(ctx, Permissions.defaultLauncherIntent(ctx))
+                Page.ART -> SubPage("Art", back) {
+                    block {
+                        Label("Favourite artists")
+                        FlowRow(
+                            Modifier.padding(horizontal = Gutter),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            ArtistChoices.forEach { name ->
+                                val on = name in s.favouriteArtists
+                                Chip(name, on) {
+                                    update { cur ->
+                                        val next = if (on) cur.favouriteArtists - name else cur.favouriteArtists + name
+                                        if (next.isEmpty()) cur else cur.copy(favouriteArtists = next)
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        ValueRow("Add your own artwork", "", onClick = {
+                            picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        })
+                        YourArtworks(
+                            works = library.filter { it.isUserProvided },
+                            currentId = today?.id,
+                            onOpen = { openArt = it },
+                        )
+                        today?.let { t -> ValueRow("Share today's painting", "", onClick = { shareArt = t }) }
+                        app.quiet.launcher.feature.art.FavouritesSection()
+                    }
                 }
-                PermissionRow("Usage access", status.usage) { Permissions.launch(ctx, Permissions.usageAccessIntent(ctx)) }
-                PermissionRow("Notification access", status.notifications) {
-                    Permissions.launch(ctx, Permissions.notificationAccessIntent(ctx))
-                }
-                PermissionRow("Display over other apps", status.overlay) {
-                    Permissions.launch(ctx, Permissions.overlayIntent(ctx))
-                }
-                PermissionRow("Battery", status.battery) { Permissions.launch(ctx, Permissions.batteryIntent(ctx)) }
-                if (Permissions.isXiaomi()) {
-                    ValueRow("Show on lock screen and pop-ups", "Open", onClick = {
-                        Permissions.launch(ctx, Permissions.xiaomiLockScreenIntent(ctx))
-                    })
-                }
-            }
 
-            section("More") {
-                ValueRow("About", "Quiet ${BuildConfig.VERSION_NAME}", onClick = null)
-                Text(
-                    "Licences",
-                    QType.body(), Q.colors.ink, Modifier.padding(horizontal = Gutter).padding(top = 16.dp),
-                )
-                Text(
-                    "Fraunces, Geist, Bodoni Moda, Instrument Serif and Big Shoulders are used under the SIL Open Font Licence. " +
-                        "Artwork is in the public domain and comes from open museum collections; credits are shown with each work.",
-                    QType.secondary(), Q.colors.muted, Modifier.padding(horizontal = Gutter).padding(top = 6.dp),
-                )
+                Page.LOOK -> SubPage("Look and motion", back) {
+                    block {
+                        Label("Theme")
+                        SegmentedRow(
+                            listOf("Black", "Light", "System"),
+                            selected = s.theme.ordinal,
+                        ) { i -> update { it.copy(theme = ThemeMode.entries[i]) } }
+                        SwitchRow("Reduce motion", s.reducedMotion) { v -> update { it.copy(reducedMotion = v) } }
+                        SwitchRow("Ink when opening apps", gesture.ink) { v -> gesturePrefs.setInk(v) }
+                    }
+                }
+
+                Page.GESTURES -> SubPage("Gestures", back) {
+                    block {
+                        SwitchRow("Swipe up for search", s.swipeUpSearch) { v -> update { it.copy(swipeUpSearch = v) } }
+                        SwitchRow("Swipe down for notifications", s.swipeDownNotifications) { v -> update { it.copy(swipeDownNotifications = v) } }
+                        SwitchRow("Double tap to lock", s.doubleTapLock) { v -> update { it.copy(doubleTapLock = v) } }
+                        SwitchRow("Open keyboard in All apps", s.autoKeyboard) { v -> update { it.copy(autoKeyboard = v) } }
+                        SwitchRow("Draw a letter to open an app", gesture.letters) { v -> gesturePrefs.setLetters(v) }
+                        if (gesture.letters) {
+                            ValueRow("Letters", app.quiet.launcher.feature.gesture.lettersSummary(gesture), onClick = { lettersOpen = true })
+                        }
+                        SwitchRow("Hold the clock to feel the time", gesture.hapticClock) { v -> gesturePrefs.setHapticClock(v) }
+                    }
+                }
+
+                Page.PERMISSIONS -> SubPage("Permissions", back) {
+                    block {
+                        PermissionRow("Default home app", status.home) {
+                            Permissions.launch(ctx, Permissions.defaultLauncherIntent(ctx))
+                        }
+                        PermissionRow("Usage access", status.usage) { Permissions.launch(ctx, Permissions.usageAccessIntent(ctx)) }
+                        PermissionRow("Notification access", status.notifications) {
+                            Permissions.launch(ctx, Permissions.notificationAccessIntent(ctx))
+                        }
+                        PermissionRow("Display over other apps", status.overlay) {
+                            Permissions.launch(ctx, Permissions.overlayIntent(ctx))
+                        }
+                        PermissionRow("Battery", status.battery) { Permissions.launch(ctx, Permissions.batteryIntent(ctx)) }
+                        if (Permissions.isXiaomi()) {
+                            ValueRow("Show on lock screen and pop-ups", "Open", onClick = {
+                                Permissions.launch(ctx, Permissions.xiaomiLockScreenIntent(ctx))
+                            })
+                        }
+                    }
+                }
+
+                else -> SubPage("About", back) {
+                    block {
+                        ValueRow("Version", "Quiet ${BuildConfig.VERSION_NAME}", onClick = null)
+                        Text(
+                            "Licences",
+                            QType.body(), Q.colors.ink, Modifier.padding(horizontal = Gutter).padding(top = 16.dp),
+                        )
+                        Text(
+                            "Fraunces, Geist, Bodoni Moda, Instrument Serif and Big Shoulders are used under the SIL Open Font Licence. " +
+                                "Artwork is in the public domain and comes from open museum collections; credits are shown with each work.",
+                            QType.secondary(), Q.colors.muted, Modifier.padding(horizontal = Gutter).padding(top = 6.dp),
+                        )
+                    }
+                }
             }
         }
     }
@@ -350,19 +467,138 @@ private fun formatMinutes(min: Int): String {
     }
 }
 
-// Building blocks
+// Pages
 
-private fun androidx.compose.foundation.lazy.LazyListScope.section(
-    title: String,
-    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
-) {
+@Composable
+private fun PageHeader(title: String, style: androidx.compose.ui.text.TextStyle, onBack: () -> Unit) {
+    Box(
+        Modifier.padding(start = 8.dp, top = 4.dp).size(44.dp).clickable(
+            interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onBack,
+        ),
+        contentAlignment = Alignment.Center,
+    ) { Chevron(Q.colors.ink, left = true) }
+    Text(title, style, Q.colors.ink, Modifier.padding(horizontal = Gutter).padding(top = 8.dp, bottom = 8.dp))
+}
+
+@Composable
+private fun SubPage(title: String, onBack: () -> Unit, content: LazyListScope.() -> Unit) {
+    LazyColumn(
+        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars),
+        contentPadding = PaddingValues(bottom = 48.dp),
+    ) {
+        item { PageHeader(title, QType.title(34.sp), onBack) }
+        content()
+    }
+}
+
+/** One group on the root page: title, a muted one-line summary, and a chevron. */
+@Composable
+private fun GroupRow(title: String, summary: String, onClick: () -> Unit) {
+    Column {
+        Row(
+            Modifier.fillMaxWidth().clickable(
+                interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick,
+            ).padding(horizontal = Gutter, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, QType.body(), Q.colors.ink, maxLines = 1)
+                Spacer(Modifier.height(3.dp))
+                Text(summary, QType.secondary(14.sp), Q.colors.muted, maxLines = 1)
+            }
+            Box(Modifier.padding(start = 12.dp)) { Chevron(Q.colors.edge, left = false) }
+        }
+        Hairline()
+    }
+}
+
+private fun LazyListScope.block(content: @Composable ColumnScope.() -> Unit) {
+    item { Column(Modifier.fillMaxWidth().padding(top = 8.dp)) { content() } }
+}
+
+private fun LazyListScope.subsection(title: String, content: @Composable ColumnScope.() -> Unit) {
     item {
-        Column(Modifier.fillMaxWidth().padding(top = 36.dp)) {
-            Text(title, QType.title(28.sp), Q.colors.ink, Modifier.padding(horizontal = Gutter).padding(bottom = 8.dp))
+        Column(Modifier.fillMaxWidth().padding(top = 32.dp)) {
+            Text(title, QType.title(22.sp), Q.colors.ink, Modifier.padding(horizontal = Gutter).padding(bottom = 4.dp))
             content()
         }
     }
 }
+
+@Composable
+private fun PlayerControlRow(current: PlayerControl, onSelect: (PlayerControl) -> Unit) {
+    Label("Music controls")
+    // Glass, ink, marble and sun first (the orbs), then the plain buttons; three to a row.
+    val order = listOf(PlayerControl.GLASS, PlayerControl.DROP, PlayerControl.MARBLE, PlayerControl.SUN, PlayerControl.BUTTONS)
+    order.chunked(3).forEachIndexed { rowIndex, rowItems ->
+    if (rowIndex > 0) Spacer(Modifier.height(10.dp))
+    Row(Modifier.padding(horizontal = Gutter).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        rowItems.forEach { c ->
+            val on = c == current
+            val shape = RoundedCornerShape(14.dp)
+            Column(
+                Modifier.weight(1f).clip(shape)
+                    .border(if (on) 1.5.dp else 1.dp, if (on) Q.colors.ink else Q.colors.edge, shape)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSelect(c) }
+                    .padding(vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                if (c == PlayerControl.BUTTONS) {
+                    ButtonsGlyph(Modifier.fillMaxWidth().height(64.dp))
+                } else {
+                    app.quiet.launcher.feature.player.OrbSample(c, Modifier.fillMaxWidth().height(64.dp), radius = 20.dp)
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    when (c) {
+                        PlayerControl.DROP -> "Ink drop"
+                        PlayerControl.MARBLE -> "Marble"
+                        PlayerControl.SUN -> "Little sun"
+                        PlayerControl.GLASS -> "Glass drop"
+                        PlayerControl.BUTTONS -> "Buttons"
+                    },
+                    QType.small(), if (on) Q.colors.ink else Q.colors.muted, align = TextAlign.Center, maxLines = 1,
+                )
+            }
+        }
+        repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+    }
+    }
+    Text(
+        "Tap the orb to pause. Drag it sideways to change song.",
+        QType.secondary(14.sp), Q.colors.muted, Modifier.padding(horizontal = Gutter).padding(top = 10.dp, bottom = 4.dp),
+    )
+}
+
+/** Previous, play and next, drawn small in ink. */
+@Composable
+private fun ButtonsGlyph(modifier: Modifier) {
+    val ink = Q.colors.ink
+    Canvas(modifier) {
+        val u = 1.dp.toPx()
+        val cy = size.height / 2f
+        val cx = size.width / 2f
+        val gap = 20f * u
+        val tri = 6f * u
+        val bar = 1.6f * u
+        // previous: bar + left-pointing triangle
+        val px = cx - gap
+        drawLine(ink, Offset(px - tri - bar, cy - tri), Offset(px - tri - bar, cy + tri), bar, StrokeCap.Round)
+        drawPath(Path().apply {
+            moveTo(px + tri * 0.5f, cy - tri); lineTo(px - tri, cy); lineTo(px + tri * 0.5f, cy + tri); close()
+        }, ink)
+        // centre: a ring
+        drawCircle(ink, radius = 9f * u, center = Offset(cx, cy), style = Stroke(width = 1.5f * u))
+        // next: right-pointing triangle + bar
+        val nx = cx + gap
+        drawPath(Path().apply {
+            moveTo(nx - tri * 0.5f, cy - tri); lineTo(nx + tri, cy); lineTo(nx - tri * 0.5f, cy + tri); close()
+        }, ink)
+        drawLine(ink, Offset(nx + tri + bar, cy - tri), Offset(nx + tri + bar, cy + tri), bar, StrokeCap.Round)
+    }
+}
+
+// Building blocks
 
 @Composable
 private fun Text(

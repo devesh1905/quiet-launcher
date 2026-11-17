@@ -193,14 +193,36 @@ object Unistroke {
 object StrokeGate {
     enum class Verdict { Pending, Swipe, Draw }
 
+    /** How far the stroke ever moved against its overall sideways direction ([dx]'s sign). */
+    fun xBacktrack(xs: FloatArray, n: Int, dx: Float): Float {
+        val dir = if (dx >= 0f) 1f else -1f
+        var best = xs[0] * dir
+        var back = 0f
+        for (i in 1 until n) {
+            val v = xs[i] * dir
+            if (v > best) best = v else back = max(back, best - v)
+        }
+        return back
+    }
+
+    /** A finished stroke that reads as a sideways page swipe rather than a letter. */
+    fun looksLikeSideSwipe(xs: FloatArray, ys: FloatArray, n: Int, dp: Float): Boolean {
+        if (n < 2) return false
+        val dx = xs[n - 1] - xs[0]; val dy = ys[n - 1] - ys[0]
+        return abs(dx) >= 40 * dp && abs(dx) > 1.4f * abs(dy) && xBacktrack(xs, n, dx) < 14 * dp
+    }
+
     fun classify(xs: FloatArray, ys: FloatArray, n: Int, dp: Float): Verdict {
         if (n < 2) return Verdict.Pending
         val sx = xs[0]; val sy = ys[0]
         var travel = 0f
         for (i in 0 until n) travel = max(travel, hypot(xs[i] - sx, ys[i] - sy))
-        if (travel < 20 * dp) return Verdict.Pending
+        // Decide only once the finger has really moved: a thumb's page swipe often starts with a curl.
+        if (travel < 32 * dp) return Verdict.Pending
         val dx = xs[n - 1] - sx; val dy = ys[n - 1] - sy
         val len = hypot(dx, dy)
+        // Mostly sideways and never turning back is a page swipe, even when it arcs like a thumb does.
+        if (abs(dx) >= 40 * dp && abs(dx) > 1.6f * abs(dy) && xBacktrack(xs, n, dx) < 10 * dp) return Verdict.Swipe
         // Furthest any point strays from the straight line start -> now.
         var dev = 0f
         for (i in 0 until n) {

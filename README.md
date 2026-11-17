@@ -45,6 +45,7 @@ the lock screen is a painting, not a notification wall. There are no streaks, po
 - Five styles: *Daily masterpiece* (public-domain paintings from the Art Institute of Chicago, The Met and the Cleveland Museum of Art), *Quiet canvas* (generative art that gets calmer the less you used your phone), *Tonight's sky* (the real moon phase and today's sun path), *Typeset* (a type poster) and *Cover of the moment*
 - Three lock typefaces (Bodoni Moda, Instrument Serif, Big Shoulders); press and hold the lock screen to switch styles and fonts
 - Works two ways: as the **system lock-screen wallpaper** (your phone keeps its own clock and fingerprint unlock) or as **Quiet's own lock screen** with an interactive music player
+- The lock-screen player has one **play orb** instead of buttons. Tap it or the cover to pause; drag it sideways to change song. Its colours are toned from the cover. Five styles: *Glass drop*, *Ink drop*, *Marble*, *Little sun* and *Buttons*
 
 **Focus**
 - A **Focus page** one swipe right of Home: start 25/50/90-minute sessions, pause distracting apps for an hour, grayscale for an hour, see what's blocked and switch schedules on or off
@@ -65,13 +66,13 @@ the lock screen is a painting, not a notification wall. There are no streaks, po
   <img src="docs/images/apps.png" width="190" alt="All apps list with search, letter sections and an A to Z rail">
   <img src="docs/images/launch.png" width="190" alt="Mindful pause: a breathing ink ring and the question 'How long?' before opening a watched app">
   <img src="docs/images/usage.png" width="190" alt="Screen time: today's total, a 7-day bar chart and per-app minutes">
-  <img src="docs/images/settings.png" width="190" alt="Settings, grouped into Home, Focus, Display, Art and music, Gestures and More">
+  <img src="docs/images/settings.png" width="190" alt="Settings: a short index of pages (Focus and screen time, Home, Lock screen, Art, Look and motion, Gestures, Permissions, About), each with a one-line summary">
 </p>
 <p align="center">
   <img src="docs/images/lock-canvas.png" width="190" alt="Quiet canvas: generative dusk horizon lock screen">
   <img src="docs/images/lock-sky.png" width="190" alt="Tonight's sky: the real moon phase over a sun-path arc">
   <img src="docs/images/lock-type.png" width="190" alt="Typeset: the hour solid and the minutes in outline as a poster">
-  <img src="docs/images/lock-player.png" width="190" alt="Lock screen music player with the cover framed over its colour field">
+  <img src="docs/images/lock-player.png" width="190" alt="Lock screen music player: the framed cover over its colour field, a seek line, the glass-drop play orb and the fingerprint ring">
 </p>
 <p align="center">
   <img src="docs/images/device-lock.png" width="230" alt="Real device: a Van Gogh etching on the lock screen with its museum label and a fingerprint ring over the sensor"><br>

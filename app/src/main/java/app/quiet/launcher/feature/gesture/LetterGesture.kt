@@ -126,6 +126,8 @@ fun LetterGestureLayer(
                 swipe(dy < 0)
                 return
             }
+            // A sideways swipe that slipped past the gate: drop it quietly rather than say "no app".
+            if (StrokeGate.looksLikeSideSwipe(s.xs, s.ys, s.n, dp)) { s.phase = LetterState.Phase.None; return }
             s.cx = (x0 + x1) / 2; s.cy = (y0 + y1) / 2
             s.hintY = (y1 + 18 * dp).coerceIn(120 * dp, h - 90 * dp)
             s.phase = LetterState.Phase.Miss
