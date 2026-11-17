@@ -1,11 +1,7 @@
 package app.quiet.launcher.feature.gesture
 
 import android.content.Context
-import android.os.Build
 import android.os.SystemClock
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.spring
@@ -64,26 +60,12 @@ class HapticClockState internal constructor(private val ctx: Context, private va
     private var ringNext = 0
     private var job: Job? = null
 
-    private val vibrator: Vibrator? by lazy {
-        if (Build.VERSION.SDK_INT >= 31) ctx.getSystemService(VibratorManager::class.java)?.defaultVibrator
-        else @Suppress("DEPRECATION") ctx.getSystemService(Vibrator::class.java)
-    }
+    private val haptics = app.quiet.launcher.designsystem.Haptics.get(ctx)
 
     internal fun play() {
         job?.cancel()
         val now = Calendar.getInstance()
         val plan = HapticTime.build(now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE))
-        val vib = vibrator?.takeIf { it.hasVibrator() }
-        val prims = vib != null && Build.VERSION.SDK_INT >= 30 &&
-            vib.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK, VibrationEffect.Composition.PRIMITIVE_CLICK)
-        // Without primitives the whole reading is one waveform, so the timing stays exact.
-        if (vib != null && !prims) runCatching {
-            val timings = plan.timings()
-            if (vib.hasAmplitudeControl()) {
-                val amps = IntArray(timings.size) { i -> if (i % 2 == 0) 0 else amplitude(plan.pulses[i / 2].kind) }
-                vib.vibrate(VibrationEffect.createWaveform(timings, amps, -1))
-            } else vib.vibrate(VibrationEffect.createWaveform(timings, -1))
-        }
         playing = true
         job = scope.launch {
             val start = SystemClock.uptimeMillis()
@@ -91,7 +73,9 @@ class HapticClockState internal constructor(private val ctx: Context, private va
             for (p in plan.pulses) {
                 val wait = start + p.startMs - SystemClock.uptimeMillis()
                 if (wait > 0) delay(wait)
-                if (vib != null && prims && Build.VERSION.SDK_INT >= 30) runCatching { vib.vibrate(effect(p.kind, vib)) }
+                // Four different feels: a double tap to start, a slow swell per hour, a heavy click per ten
+                // minutes and a light tick per minute.
+                haptics.play(feel(p.kind))
                 ring(p.kind)
                 if (!reduced && p.kind != HapticTime.Kind.CONFIRM) launch {
                     val sc = when (p.kind) { HapticTime.Kind.LONG -> 1.022f; HapticTime.Kind.SHORT -> 1.012f; else -> 1.006f }
@@ -109,7 +93,6 @@ class HapticClockState internal constructor(private val ctx: Context, private va
     internal fun stop() {
         if (!playing && job == null) return
         job?.cancel(); job = null
-        if (playing) runCatching { vibrator?.cancel() }
         playing = false
         // The frame loop went with the job: clear the rings so none is left frozen on screen.
         ringStart.fill(0L)
@@ -137,18 +120,11 @@ class HapticClockState internal constructor(private val ctx: Context, private va
         frameMs = 0L
     }
 
-    private fun amplitude(kind: HapticTime.Kind) = when (kind) {
-        HapticTime.Kind.CONFIRM -> 90
-        HapticTime.Kind.LONG -> 170
-        HapticTime.Kind.SHORT -> 160
-        HapticTime.Kind.TICK -> 255
-    }
-
-    @androidx.annotation.RequiresApi(30)
-    private fun effect(kind: HapticTime.Kind, vib: Vibrator): VibrationEffect = when (kind) {
-        HapticTime.Kind.TICK -> VibrationEffect.startComposition().addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 1f).compose()
-        HapticTime.Kind.CONFIRM -> VibrationEffect.startComposition().addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.5f).compose()
-        else -> VibrationEffect.createOneShot(kind.onMs, if (vib.hasAmplitudeControl()) amplitude(kind) else VibrationEffect.DEFAULT_AMPLITUDE)
+    private fun feel(kind: HapticTime.Kind) = when (kind) {
+        HapticTime.Kind.CONFIRM -> app.quiet.launcher.designsystem.Feel.Double
+        HapticTime.Kind.LONG -> app.quiet.launcher.designsystem.Feel.Swell
+        HapticTime.Kind.SHORT -> app.quiet.launcher.designsystem.Feel.Heavy
+        HapticTime.Kind.TICK -> app.quiet.launcher.designsystem.Feel.Tick
     }
 }
 

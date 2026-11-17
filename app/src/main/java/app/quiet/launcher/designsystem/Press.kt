@@ -8,9 +8,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlinx.coroutines.launch
 
 /**
@@ -26,7 +24,7 @@ fun Modifier.pressable(
 ): Modifier = composed {
     val anim = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberHaptics()
     this
         .graphicsLayer {
             val p = anim.value
@@ -45,7 +43,7 @@ fun Modifier.pressable(
                 onDoubleTap = onDoubleTap?.let { { _ -> it() } },
                 onLongPress = onLongPress?.let {
                     { _ ->
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        haptic.play(Feel.Heavy)
                         it()
                     }
                 },

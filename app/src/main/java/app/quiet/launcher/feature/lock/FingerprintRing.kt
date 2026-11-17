@@ -1,5 +1,7 @@
 package app.quiet.launcher.feature.lock
 
+import app.quiet.launcher.designsystem.Feel
+import app.quiet.launcher.designsystem.rememberHaptics
 import android.annotation.SuppressLint
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -14,9 +16,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.quiet.launcher.designsystem.Q
@@ -56,7 +56,7 @@ fun readSensorSpot(screenW: Int, screenH: Int): SensorSpot {
 fun FingerprintRing(diameter: Dp, success: Boolean, onHold: () -> Unit, modifier: Modifier = Modifier) {
     val c = Q.colors
     val reduced = Q.reducedMotion
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberHaptics()
     val scope = rememberCoroutineScope()
     val press = remember { Animatable(0f) }
     val ripple = remember { Animatable(0f) }
@@ -76,7 +76,7 @@ fun FingerprintRing(diameter: Dp, success: Boolean, onHold: () -> Unit, modifier
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false).consume()
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptic.play(Feel.Heavy)
                     scope.launch { press.animateTo(1f, spring(0.6f, 900f)) }
                     scope.launch { ripple.snapTo(0f); ripple.animateTo(1f, tween(900, easing = QMotion.EaseOutQuiet)) }
                     // Give the system's own sensor a beat to unlock under us; then ask for the keyguard.

@@ -1,5 +1,7 @@
 package app.quiet.launcher.feature.lock
 
+import app.quiet.launcher.designsystem.Feel
+import app.quiet.launcher.designsystem.rememberHaptics
 import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
@@ -21,13 +23,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.IntSize
@@ -74,7 +74,7 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
     var heartPulse by remember { mutableIntStateOf(0) }
     val np by container.nowPlaying.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberHaptics()
     val density = LocalDensity.current
     val reduced = Q.reducedMotion
     var size by remember { mutableStateOf(IntSize(1, 1)) }
@@ -131,7 +131,7 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
         // The artwork has its own long-press menu; it fires first in the same gesture.
         if (artPressHandled) { artPressHandled = false; return }
         if (picking) return
-        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        haptic.play(Feel.Heavy)
         scope.launch { pager.scrollToPage(styles.indexOf(settings.lockStyle).coerceAtLeast(0)) }
         picking = true
         scope.launch { pick.animateTo(1f, if (reduced) tween(0) else QMotion.Open) }
@@ -154,7 +154,7 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
         delay(10_000)
         onIdle()
     }
-    LaunchedEffect(musicMenu, paintingMenu) { if (musicMenu || paintingMenu) haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
+    LaunchedEffect(musicMenu, paintingMenu) { if (musicMenu || paintingMenu) haptic.play(Feel.Heavy) }
     BackHandler(enabled = !picking) { /* Back never leaves the lock screen. */ }
 
     // The live scene for a style; music wins over the chosen style when not picking.
@@ -336,7 +336,7 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
                     val add = !artIsFavourite
                     paintingMenu = false
                     scope.launch { container.art.setFavourite(a.id, add) }
-                    if (add) { heartPulse++; haptic.performHapticFeedback(HapticFeedbackType.Confirm) }
+                    if (add) { heartPulse++; haptic.play(Feel.Heart) }
                 }
             }
             app.quiet.launcher.feature.apps.SheetAction("Show another painting") {

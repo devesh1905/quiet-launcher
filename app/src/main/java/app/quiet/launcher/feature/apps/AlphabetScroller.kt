@@ -1,5 +1,7 @@
 package app.quiet.launcher.feature.apps
 
+import app.quiet.launcher.designsystem.Feel
+import app.quiet.launcher.designsystem.rememberHaptics
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -15,12 +17,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,7 +50,7 @@ fun AlphabetScroller(
 ) {
     val c = Q.colors
     val reduced = Q.reducedMotion
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberHaptics()
     val scope = rememberCoroutineScope()
 
     var railTop by remember { mutableFloatStateOf(0f) }
@@ -98,7 +98,7 @@ fun AlphabetScroller(
                             val l = letters[indexAt(y)]
                             if (l != active) {
                                 active = l
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                haptic.play(Feel.Tick)
                                 if (scrub) onScrub(l)
                             }
                             scope.launch {

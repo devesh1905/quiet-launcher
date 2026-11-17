@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.boundsInWindow
@@ -45,10 +46,14 @@ import kotlin.math.min
  * animating draw exactly as before and nothing runs while idle.
  */
 object Ink {
-    private const val OUT_MS = 180
-    private const val BACK_MS = 200
+    private const val OUT_MS = 550
+    private const val BACK_MS = 550
+    /** The app is asked to open only when the dissolve has nearly finished, so the whole effect is seen on Home. */
+    private const val LEAD_MS = 500L
+    /** Home is resumed while the closing app is still shrinking over it: wait that out, then draw the name back. */
+    private const val BACK_DELAY_MS = 350L
     /** If Home was not paused by then, the launch did not happen: draw the name back. */
-    private const val FAILSAFE_MS = 700L
+    private const val FAILSAFE_MS = 1500L
 
     internal var activeId by mutableStateOf<String?>(null)
         private set
@@ -75,14 +80,15 @@ object Ink {
                 ).toBundle()
             }.getOrNull()
         }
-        view.context.container.apps.launch(key, screen, opts)
-        if (!animate || handle == null) return
+        if (!animate || handle == null) { view.context.container.apps.launch(key, screen, opts); return }
+        // Posted on the view, not the effect's job, so a second tap or leaving the screen never loses the launch.
+        view.postDelayed({ view.context.container.apps.launch(key, screen, opts) }, LEAD_MS)
         job?.cancel()
         left = false
         activeId = handle.id
         job = scope.launch {
             progress.snapTo(0f)
-            progress.animateTo(1f, tween(OUT_MS, easing = QMotion.EaseOutQuiet))
+            progress.animateTo(1f, tween(OUT_MS, easing = androidx.compose.animation.core.LinearEasing))
             delay(FAILSAFE_MS - OUT_MS)
             if (!left) back()
         }
@@ -95,7 +101,7 @@ object Ink {
     }.getOrNull()
 
     private suspend fun back() {
-        progress.animateTo(0f, tween(BACK_MS, easing = QMotion.EaseOutQuiet))
+        progress.animateTo(0f, tween(BACK_MS, easing = InkEase))
         activeId = null
     }
 
@@ -105,9 +111,12 @@ object Ink {
         if (activeId == null || !left) return
         job?.cancel()
         left = false
-        job = scope.launch { back() }
+        job = scope.launch { delay(BACK_DELAY_MS); back() }
     }
 }
+
+/** Even pace, the same length as the dissolve, so returning reads as the open played backwards. */
+private val InkEase = androidx.compose.animation.core.CubicBezierEasing(0.35f, 0f, 0.55f, 1f)
 
 /** Put once on each screen that opens apps with ink: redraws the name when Home comes back. */
 @Composable
@@ -155,10 +164,16 @@ internal class InkNode(var handle: InkHandle) : Modifier.Node(), DrawModifierNod
         if (p <= 0.001f) { drawContent(); return }
         if (p >= 0.999f) return
         val l = layer ?: requireGraphicsContext().createGraphicsLayer().also { layer = it }
-        l.record { this@draw.drawContent() }
         val dp = density
+        // The layer is larger than the row so the ink can drift and rise out of it.
+        val px = 28 * dp; val py = 44 * dp
+        val lw = size.width + px * 2; val lh = size.height + py * 2
+        l.topLeft = androidx.compose.ui.unit.IntOffset(-px.toInt(), -py.toInt())
+        l.record(androidx.compose.ui.unit.IntSize(lw.toInt(), lh.toInt())) {
+            translate(px, py) { this@draw.drawContent() }
+        }
         // The ink leaves from near the start of the name, where the finger usually is.
-        val fx = if (Build.VERSION.SDK_INT >= 33) InkShader.effect(size.width, size.height, min(size.width * 0.2f, 90 * dp), size.height / 2, p) else null
+        val fx = if (Build.VERSION.SDK_INT >= 33) InkShader.effect(lw, lh, px + min(size.width * 0.2f, 90 * dp), py + size.height / 2, size.height, p) else null
         if (fx != null) {
             l.alpha = 1f
             l.translationY = 0f
@@ -180,6 +195,7 @@ private object InkShader {
         uniform float2 size;
         uniform float2 origin;
         uniform float progress;
+        uniform float lineH;
         float hash(float2 p) { p = fract(p * float2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
         float noise(float2 p) {
             float2 i = floor(p); float2 f = fract(p);
@@ -188,24 +204,46 @@ private object InkShader {
         }
         half4 main(float2 xy) {
             float p = progress;
-            float d = length((xy - origin) * float2(1.0, 1.6)) / max(size.x, 1.0);
-            float n = noise(xy / 6.0) * 0.6 + noise(xy / 21.0) * 0.4;
-            float2 flow = float2(noise(xy / 17.0 + p * 3.0) - 0.5, noise(xy / 17.0 + 9.1 - p * 3.0) - 0.5);
-            half4 col = content.eval(xy + flow * 26.0 * p + float2(0.0, 16.0 * p * p));
-            float t = p * 1.8 - 0.2 - d * 0.4;
-            float keep = smoothstep(t - 0.12, t + 0.12, n);
-            return col * keep * (1.0 - smoothstep(0.85, 1.0, p));
+            float u = lineH / 60.0;
+            // Ink leaves near the finger first and the far end of the name last.
+            float d = length((xy - origin) * float2(1.0, 1.4)) / max(size.x, 1.0);
+            float lp = clamp(p * 1.25 - d * 0.25, 0.0, 1.0);
+            // Tendrils: the ink rises and sways, more the higher it has climbed.
+            float rise = 75.0 * u * lp * lp;
+            float sway = sin(xy.y / (8.0 * u) + p * 7.0 + xy.x / (26.0 * u)) * 9.0 * u * lp
+                + (noise(xy / (34.0 * u) + p * 1.3) - 0.5) * 46.0 * u * lp;
+            float2 q = xy + float2(sway, rise);
+            // Wet ink: blur, then cut at a threshold. A low cut makes the strokes swell and run into each
+            // other; a rising cut breaks them into droplets that shrink away. Never faded, only reshaped.
+            float r = (1.2 + 10.0 * lp) * u;
+            half4 acc = content.eval(q) * 2.0;
+            for (int i = 0; i < 10; i++) {
+                float a = float(i) * 0.6283;
+                float2 o = float2(cos(a), sin(a));
+                acc += content.eval(q + o * r);
+                acc += content.eval(q + o * r * 0.5) * 1.5;
+            }
+            acc /= 27.0;
+            float cov = acc.a;
+            half3 ink = acc.a > 0.001 ? acc.rgb / acc.a : half3(0.0);
+            float n = noise(xy / (9.0 * u) + p * 0.7);
+            float th = (lp < 0.3 ? mix(0.45, 0.16, lp / 0.3) : mix(0.16, 0.95, (lp - 0.3) / 0.7)) + (n - 0.5) * 0.35 * lp;
+            float m = smoothstep(th - 0.05, th + 0.05, cov);
+            float edge = smoothstep(0.0, 22.0 * u, min(min(xy.x, size.x - xy.x), min(xy.y, size.y - xy.y)));
+            half4 goo = half4(ink * m, m) * edge;
+            return mix(content.eval(xy), goo, smoothstep(0.0, 0.08, lp));
         }
     """
     // Compiled on first use (after the first launch has already started); null if the device rejects it.
-    private val shader by lazy { runCatching { RuntimeShader(SRC) }.getOrNull() }
+    private val shader by lazy { runCatching { RuntimeShader(SRC) }.onFailure { android.util.Log.w("QuietInk", "ink shader rejected", it) }.getOrNull() }
 
-    fun effect(w: Float, h: Float, ox: Float, oy: Float, p: Float): androidx.compose.ui.graphics.RenderEffect? {
+    fun effect(w: Float, h: Float, ox: Float, oy: Float, lineH: Float, p: Float): androidx.compose.ui.graphics.RenderEffect? {
         val s = shader ?: return null
         s.setFloatUniform("size", w, h)
         s.setFloatUniform("origin", ox, oy)
         s.setFloatUniform("progress", p)
-        // A RenderEffect snapshots the uniforms, so one is made per frame, only while the ~11-frame effect runs.
+        s.setFloatUniform("lineH", lineH)
+        // A RenderEffect snapshots the uniforms, so one is made per frame, only while the effect runs.
         return android.graphics.RenderEffect.createRuntimeShaderEffect(s, "content").asComposeRenderEffect()
     }
 }

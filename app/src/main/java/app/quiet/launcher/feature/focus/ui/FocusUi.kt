@@ -1,5 +1,7 @@
 package app.quiet.launcher.feature.focus.ui
 
+import app.quiet.launcher.designsystem.Feel
+import app.quiet.launcher.designsystem.rememberHaptics
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -34,11 +36,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -235,7 +235,7 @@ internal fun HoldButton(label: String, holdingLabel: String, modifier: Modifier 
     val shape = RoundedCornerShape(28.dp)
     val fill = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberHaptics()
     val complete by rememberUpdatedState(onComplete)
     var holding by remember { mutableStateOf(false) }
     Box(
@@ -246,7 +246,7 @@ internal fun HoldButton(label: String, holdingLabel: String, modifier: Modifier 
                     val job = scope.launch {
                         val remaining = ((1f - fill.value) * HOLD_MS).toInt().coerceAtLeast(1)
                         fill.animateTo(1f, tween(remaining, easing = LinearEasing))
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        haptic.play(Feel.Heavy)
                         complete()
                     }
                     tryAwaitRelease()
@@ -282,7 +282,7 @@ internal fun SlideToConfirm(label: String, modifier: Modifier = Modifier, enable
     val c = Q.colors
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberHaptics()
     val confirm by rememberUpdatedState(onConfirm)
     val offset = remember { Animatable(0f) }
     var trackPx by remember { mutableFloatStateOf(0f) }
@@ -308,7 +308,7 @@ internal fun SlideToConfirm(label: String, modifier: Modifier = Modifier, enable
                                 confirmed = true
                                 scope.launch {
                                     offset.animateTo(maxPx, QMotion.Snappy)
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.play(Feel.Heavy)
                                     confirm()
                                 }
                             } else scope.launch { offset.animateTo(0f, QMotion.Return) }
@@ -346,7 +346,7 @@ internal fun SlideToConfirm(label: String, modifier: Modifier = Modifier, enable
 @Composable
 internal fun DiscreteSlider(count: Int, index: Int, onIndex: (Int) -> Unit, modifier: Modifier = Modifier, describe: (Int) -> String) {
     val c = Q.colors
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberHaptics()
     var widthPx by remember { mutableFloatStateOf(1f) }
     val current by rememberUpdatedState(index)
     val change by rememberUpdatedState(onIndex)
@@ -356,7 +356,7 @@ internal fun DiscreteSlider(count: Int, index: Int, onIndex: (Int) -> Unit, modi
         val usable = (widthPx - inset * 2).coerceAtLeast(1f)
         val i = (((x - inset) / usable) * (count - 1)).roundToInt().coerceIn(0, count - 1)
         if (i != current) {
-            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            haptic.play(Feel.Tick)
             change(i)
         }
     }

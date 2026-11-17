@@ -2,6 +2,8 @@
 
 package app.quiet.launcher.feature.quick
 
+import app.quiet.launcher.designsystem.Feel
+import app.quiet.launcher.designsystem.rememberHaptics
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -22,10 +24,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -89,7 +89,7 @@ fun QuickActionList(onOpenFocusSetup: () -> Unit, onOpenUsage: () -> Unit, onAft
     val (grayUntil, nowMs) = rememberGrayscaleUntil()
     val grayOn = grayUntil > maxOf(nowMs, System.currentTimeMillis())
     val distracting = remember { QuickActions.distractingApps(ctx).size }
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberHaptics()
     val is24 = android.text.format.DateFormat.is24HourFormat(ctx)
 
     Column {
@@ -98,7 +98,7 @@ fun QuickActionList(onOpenFocusSetup: () -> Unit, onOpenUsage: () -> Unit, onAft
         }
         Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             app.quiet.launcher.feature.focus.ui.StepButton(plus = false, label = "Shorter") {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                haptic.play(Feel.Tick)
                 minutes = (minutes - 5).coerceAtLeast(5)
             }
             AnimatedContent(
@@ -119,7 +119,7 @@ fun QuickActionList(onOpenFocusSetup: () -> Unit, onOpenUsage: () -> Unit, onAft
                 )
             }
             app.quiet.launcher.feature.focus.ui.StepButton(plus = true, label = "Longer") {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                haptic.play(Feel.Tick)
                 minutes = (minutes + 5).coerceAtMost(240)
             }
         }
@@ -127,7 +127,7 @@ fun QuickActionList(onOpenFocusSetup: () -> Unit, onOpenUsage: () -> Unit, onAft
         Box(
             Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(28.dp)).background(c.ink)
                 .pressable(pressedScale = 0.97f) {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptic.play(Feel.Double)
                     QuickActions.startFocus(ctx, minutes); onAfter()
                 },
             contentAlignment = Alignment.Center,
@@ -142,14 +142,14 @@ fun QuickActionList(onOpenFocusSetup: () -> Unit, onOpenUsage: () -> Unit, onAft
             if (distracting > 0) "$distracting apps" else "None marked yet",
         ) {
             if (distracting > 0) {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                haptic.play(Feel.Tick)
                 confirmPause = !confirmPause
             }
         }
         PauseConfirm(
             visible = confirmPause,
             onConfirm = {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                haptic.play(Feel.Double)
                 QuickActions.pauseDistractions(ctx, 60); confirmPause = false; onAfter()
             },
             onCancel = { confirmPause = false },
@@ -404,7 +404,7 @@ private fun Modifier.animateEnterExitCompat(visibility: AnimatedVisibilityScope,
 @Composable
 fun HoldToEnd(modifier: Modifier = Modifier, onDone: () -> Unit) {
     val c = Q.colors
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberHaptics()
     val fill = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     Box(
@@ -417,7 +417,7 @@ fun HoldToEnd(modifier: Modifier = Modifier, onDone: () -> Unit) {
                     awaitFirstDown()
                     val job = scope.launch {
                         fill.animateTo(1f, tween(1500, easing = LinearEasing))
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        haptic.play(Feel.Heavy)
                         onDone()
                     }
                     waitForUpOrCancellation()

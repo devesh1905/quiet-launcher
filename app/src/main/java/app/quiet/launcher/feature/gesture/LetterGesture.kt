@@ -1,8 +1,9 @@
 package app.quiet.launcher.feature.gesture
 
+import app.quiet.launcher.designsystem.Feel
+import app.quiet.launcher.designsystem.Haptics
 import android.graphics.Rect
 import android.os.Build
-import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -128,7 +129,7 @@ fun LetterGestureLayer(
             s.cx = (x0 + x1) / 2; s.cy = (y0 + y1) / 2
             s.hintY = (y1 + 18 * dp).coerceIn(120 * dp, h - 90 * dp)
             s.phase = LetterState.Phase.Miss
-            if (Build.VERSION.SDK_INT >= 30) view.performHapticFeedback(HapticFeedbackConstants.REJECT)
+            Haptics.get(ctx).play(Feel.Thud)
             scope.launch {
                 s.t.snapTo(0f)
                 s.t.animateTo(1400f, tween(1400, easing = LinearEasing))
@@ -140,7 +141,7 @@ fun LetterGestureLayer(
         s.cy = ((y0 + y1) / 2).coerceIn(130 * dp, max(130 * dp, h - 130 * dp))
         s.label = app.label
         s.phase = LetterState.Phase.Hit
-        view.performHapticFeedback(if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY)
+        Haptics.get(ctx).play(Feel.Click)
         scope.launch {
             s.t.snapTo(0f)
             val anim = launch { s.t.animateTo(600f, tween(600, easing = LinearEasing)) }
