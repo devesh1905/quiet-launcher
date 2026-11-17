@@ -24,7 +24,6 @@ class QuietApp : Application() {
         app.quiet.launcher.service.LockService.startIfEnabled(this)
         app.quiet.launcher.feature.monochrome.MonochromeController.get(this).start()
         app.quiet.launcher.feature.focus.FocusService.sync(this)
-        app.quiet.launcher.feature.focus.PaymentGuard.resume(this)
         // Day receipt: off the main thread, a prefs read and at most one inexact alarm per boot.
         container.appScope.launch { app.quiet.launcher.feature.receipt.ReceiptScheduler.ensure(this@QuietApp) }
     }

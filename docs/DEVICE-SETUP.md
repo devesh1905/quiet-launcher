@@ -9,7 +9,7 @@ search Settings for the bold word.
 1. **Make Quiet the home app.** Settings → Apps → Default apps → **Home app** → Quiet.
 2. **Allow restricted settings** (Android 13+, if you installed the APK from a browser, file manager or Taildrop):
    Settings → Apps → Quiet → ⋮ (top right) → **Allow restricted settings**. Without this, Android greys out
-   accessibility and notification access for Quiet.
+   notification access for Quiet.
 3. **Grant permissions from Quiet itself:** Quiet → Settings → **Permissions**. Each row opens the right system screen.
 4. **Keep it running:** set Quiet's battery usage to **Unrestricted** (wording differs per maker, see below), so reminders,
    blocking and the lock screen aren't killed in the background.
@@ -18,22 +18,17 @@ search Settings for the bold word.
    - **Quiet lock screen on top**: Quiet's own lock screen with the music player. Swipe up or touch the ring to reach the system unlock.
    Calls always take over Quiet's lock screen.
 
-Updating Quiet can switch precision mode (accessibility) off on some phones. If blocking or
-double-tap lock stops working after an update, turn **Quiet precision mode** back on in Accessibility.
-
 ## Google Pixel and stock Android
 
 - Home app: Settings → Apps → **Default apps** → Home app.
 - Gestures: full-screen gestures work with Quiet. The recents screen may still use the Pixel launcher's animation; that's Android, not Quiet.
 - Battery: Settings → Apps → Quiet → **App battery usage** → Unrestricted.
-- Accessibility: Settings → Accessibility → **Quiet precision mode**.
 
 ## Samsung (One UI)
 
 - Home app: Settings → Apps → **Choose default apps** → Home app → Quiet.
 - Gestures: Settings → Display → **Navigation bar** → Swipe gestures. Works with third-party launchers.
 - Battery: Settings → Battery → **Background usage limits** → Never auto sleeping apps → add Quiet. Also make sure Quiet isn't in "Sleeping apps".
-- Accessibility: Settings → Accessibility → **Installed apps** → Quiet precision mode.
 - Lock screen: if you use Good Lock / Lock Star or a dynamic lock-screen service, turn it off, or it will replace Quiet's lock wallpaper.
 
 ## Motorola (My UX)

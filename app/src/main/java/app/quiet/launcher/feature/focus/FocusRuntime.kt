@@ -174,7 +174,7 @@ class FocusRuntime private constructor(private val app: Context) {
                 }.toSet()
             }
             repo.defaultWatched.value = watched
-            val safe = withContext(Dispatchers.IO) { pkgs.filter { PaymentGuard.isPayment(app, it) }.toSet() }
+            val safe = withContext(Dispatchers.IO) { pkgs.filter { PaymentApps.isPayment(app, it) }.toSet() }
             repo.alwaysAllowed.value = alwaysAllowedPackages() + safe
         }
     }

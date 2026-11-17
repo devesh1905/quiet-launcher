@@ -20,8 +20,6 @@
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
-    <!-- Close a payment app left in the background so it starts fresh with precision mode paused. -->
-    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
 
     <application
         android:name=".QuietApp"
@@ -109,13 +107,6 @@
                 android:value="Keeps the user's own app-time reminders, pauses and blocks running while other apps are open" />
         </service>
 
-        <service android:name=".feature.focus.QuietAccessibilityService" android:exported="true"
-            android:label="@string/focus_accessibility_label"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
-            <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_quiet" />
-        </service>
-
         <receiver android:name=".feature.focus.QuietDeviceAdminReceiver" android:exported="true"
             android:label="@string/focus_admin_label" android:description="@string/focus_admin_description"
             android:permission="android.permission.BIND_DEVICE_ADMIN">
@@ -130,12 +121,6 @@
         </service>
         <service android:name=".feature.quick.GrayscaleTileService" android:exported="true"
             android:label="Grayscale" android:icon="@drawable/ic_tile_grayscale"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
-            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
-        </service>
-
-        <service android:name=".feature.quick.PrecisionTileService" android:exported="true"
-            android:label="Precision" android:icon="@drawable/ic_tile_precision"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
         </service>

@@ -56,8 +56,8 @@ the lock screen is a painting, not a notification wall. There are no streaks, po
 - In-app time reminders per app: when time is up, just remind, close the app and block it for a while, or make you wait before reopening
 - A breathing pause before opening watched apps that grows with each open, an intention question, a floating time-left bar, daily limits per app
 - Block any app for 1 hour to 30 days, blocking schedules by weekday (overnight spans work), focus sessions with Do Not Disturb
-- Precision mode (optional accessibility service): blocks Shorts and Reels, blocks the website version of a blocked app in your browser, locks the screen on double tap
-- **Payment apps just work**: GPay, PhonePe, Paytm, BHIM and bank apps refuse to run while an accessibility service is on, so Quiet pauses precision mode before they open and turns it back on a minute after you leave. Payment, bank, authenticator and security apps are never blocked by sessions, blocks or schedules. A **Precision** Quick Settings tile switches it by hand
+- No accessibility service: payment and bank apps (GPay, PhonePe, Paytm, BHIM) refuse to run while one is on, so Quiet doesn't ship one. App detection uses usage access; double-tap lock uses device admin
+- Payment, bank, authenticator and security apps are never blocked by sessions, blocks or schedules
 - Notification filter: only the apps you allow can interrupt; everything else is held quietly for 7 days
 - Monochrome: grayscale for chosen apps, or everything during a wind-down window
 - Screen time screen: today, 7 days, per-app minutes and a plain weekly sentence
@@ -86,7 +86,7 @@ the lock screen is a painting, not a notification wall. There are no streaks, po
 3. Open Quiet → Settings → **Permissions** and grant what you want to use.
 
 Quiet is a personal project and is not on the Play Store. Installing over adb or from Android Studio avoids
-Android 13+ "restricted settings" for accessibility and notification access.
+Android 13+ "restricted settings" for notification access.
 
 ### Install over adb
 
@@ -104,10 +104,10 @@ can follow it step by step.
 
 | Permission | Used for | Needed? |
 |---|---|---|
-| Usage access | Screen time, day strip, reminders without precision mode | Recommended |
+| Usage access | Screen time, day strip, app reminders and blocks | Recommended |
 | Notification access | Now playing (cover art and controls), notification filter | Recommended |
 | Display over other apps | Floating time bar, pauses and Quiet's lock screen | For focus features |
-| Accessibility (precision mode) | Exact app detection, Shorts/Reels and website blocking, double-tap lock | Optional |
+| Device admin (lock only) | Double tap to lock | Optional |
 | Modify system settings | Short screen timeout while Quiet's lock screen is up | Optional |
 | Do Not Disturb access | Focus sessions | Optional |
 | `WRITE_SECURE_SETTINGS` (adb only) | Monochrome mode | Optional |
@@ -121,8 +121,8 @@ adb shell pm grant app.quiet.launcher android.permission.WRITE_SECURE_SETTINGS
 ## Privacy
 
 No analytics, no ads, no account, no crash reporting. The only network calls fetch public-domain
-paintings from museum APIs (a few a day, a few MB, on Wi-Fi or mobile data). Usage data, held notifications and
-everything precision mode sees stay on the phone.
+paintings from museum APIs (a few a day, a few MB, on Wi-Fi or mobile data). Usage data and held notifications
+stay on the phone.
 
 ## Build
 

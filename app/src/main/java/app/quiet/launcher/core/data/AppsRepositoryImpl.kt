@@ -187,13 +187,7 @@ class AppsRepositoryImpl(context: Context, private val scope: CoroutineScope) : 
                 rawLaunch(key, sourceBounds, options)
             }
         }
-        // Payment apps refuse to run with precision mode on: switch it off first and give the system a moment.
-        if (app.quiet.launcher.feature.focus.PaymentGuard.beforeLaunch(appContext, key.packageName)) {
-            android.os.Handler(android.os.Looper.getMainLooper())
-                .postDelayed({ go() }, app.quiet.launcher.feature.focus.PaymentGuard.LAUNCH_DELAY_MS)
-        } else {
-            go()
-        }
+        go()
     }
 
     private fun rawLaunch(key: AppKey, sourceBounds: Rect?, options: android.os.Bundle? = null) {

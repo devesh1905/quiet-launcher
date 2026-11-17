@@ -27,7 +27,7 @@ import kotlinx.coroutines.launch
  * - **Usage events** (default): while the screen is interactive and something needs it
  *   ([setNeeded]), poll `UsageStatsManager.queryEvents` over the last 10 s every 800 ms and take
  *   the latest ACTIVITY_RESUMED. Polling stops on SCREEN_OFF and resumes on SCREEN_ON.
- * - **Accessibility** (precision mode): [QuietAccessibilityService] reports window changes
+ * - **Accessibility** (no longer shipped; kept for a future opt-in): a service would report window changes
  *   through [onAccessibilityWindow]; while it is connected, [precise] is true and polling stops.
  *
  * Neutral packages (system UI, keyboards) keep the previous value, because they float over an

@@ -38,7 +38,7 @@ import app.quiet.launcher.feature.usage.UsageScreen
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 
-private enum class Overlay { None, Settings, Usage, Notifications, Monochrome, Hidden, Focus, Schedules, Precision, FocusSession, BlockApp }
+private enum class Overlay { None, Settings, Usage, Notifications, Monochrome, Hidden, Focus, Schedules, FocusSession, BlockApp }
 
 class MainActivity : ComponentActivity() {
     /** Bumped when Home is pressed while we are already in front: return to the Home page. */
@@ -196,7 +196,6 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
                         onOpenFocus = { overlay = Overlay.Focus },
                         onOpenSchedules = { openFrom(Overlay.Schedules, Overlay.Settings) },
                         onOpenFocusSession = { openFrom(Overlay.FocusSession, Overlay.Settings) },
-                        onOpenPrecision = { overlay = Overlay.Precision },
                     )
                 }
                 Overlay.Focus -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
@@ -204,15 +203,11 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
                         onBack = { overlay = Overlay.Settings },
                         onOpenSchedules = { openFrom(Overlay.Schedules, Overlay.Settings) },
                         onOpenBlockApp = { p -> blockPkg = p; overlayBack = Overlay.Focus; overlay = Overlay.BlockApp },
-                        onOpenPrecisionMode = { overlay = Overlay.Precision },
                         onOpenFocusSession = { openFrom(Overlay.FocusSession, Overlay.Settings) },
                     )
                 }
                 Overlay.Schedules -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
                     app.quiet.launcher.feature.focus.settings.SchedulesScreen(onBack = { overlay = if (overlayBack == Overlay.None) Overlay.None else Overlay.Settings; overlayBack = Overlay.Settings })
-                }
-                Overlay.Precision -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
-                    app.quiet.launcher.feature.focus.settings.PrecisionModeScreen(onBack = { overlay = Overlay.Settings })
                 }
                 Overlay.FocusSession -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
                     app.quiet.launcher.feature.focus.settings.FocusSessionStart(onBack = { overlay = if (overlayBack == Overlay.None) Overlay.None else Overlay.Settings; overlayBack = Overlay.Settings }, onStarted = { overlay = Overlay.None; overlayBack = Overlay.Settings })

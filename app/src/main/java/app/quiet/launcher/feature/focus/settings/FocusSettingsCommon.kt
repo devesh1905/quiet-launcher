@@ -17,7 +17,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.quiet.launcher.container
 import app.quiet.launcher.core.platform.Format
 import app.quiet.launcher.feature.focus.FocusRuntime
-import app.quiet.launcher.feature.focus.QuietAccessibilityService
 
 internal data class AppItem(val pkg: String, val label: String)
 
@@ -48,22 +47,6 @@ internal fun weekLine(ms: Long?): String? = ms?.takeIf { it >= 60_000 }?.let { "
 
 internal fun open(ctx: Context, intent: Intent) {
     app.quiet.launcher.core.platform.Permissions.launch(ctx, intent)
-}
-
-/** Accessibility settings, scrolled to Quiet where the system supports it. */
-internal fun accessibilitySettingsIntent(ctx: Context): Intent {
-    val component = ComponentName(ctx, QuietAccessibilityService::class.java).flattenToString()
-    return Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-        .putExtra(":settings:fragment_args_key", component)
-        .putExtra(":settings:show_fragment_args", Bundle().apply { putString(":settings:fragment_args_key", component) })
-}
-
-/** True when the service is switched on in system settings (it may not be bound yet). */
-internal fun accessibilityEnabled(ctx: Context): Boolean {
-    if (QuietAccessibilityService.instance != null) return true
-    val flat = ComponentName(ctx, QuietAccessibilityService::class.java).flattenToString()
-    val enabled = Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
-    return enabled.split(':').any { it.equals(flat, ignoreCase = true) }
 }
 
 internal fun notificationPolicyIntent(): Intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)

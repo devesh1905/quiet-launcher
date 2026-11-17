@@ -237,7 +237,8 @@ private fun HomeContent(
                 detectTapGestures(onLongPress = { onBackgroundLongPress() }, onDoubleTap = {
                     if (ctx.container.settings.settings.value.doubleTapLock &&
                         !app.quiet.launcher.feature.focus.LockController.lockNow(ctx)) {
-                        android.widget.Toast.makeText(ctx, "Turn on Precision mode in Settings to lock with a double tap.", android.widget.Toast.LENGTH_SHORT).show()
+                        // Not a device admin yet: ask from the gesture itself.
+                        app.quiet.launcher.core.platform.Permissions.launch(ctx, app.quiet.launcher.feature.focus.LockController.adminIntent(ctx))
                     }
                 })
             }

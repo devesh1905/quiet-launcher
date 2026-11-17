@@ -153,7 +153,6 @@ fun SettingsScreen(
     onOpenFocus: () -> Unit = {},
     onOpenSchedules: () -> Unit = {},
     onOpenFocusSession: () -> Unit = {},
-    onOpenPrecision: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val container = ctx.container
@@ -254,7 +253,6 @@ fun SettingsScreen(
                         ValueRow("Start a focus session", "", onClick = onOpenFocusSession)
                         ValueRow("App time and pauses", "", onClick = onOpenFocus)
                         ValueRow("Blocking schedules", "", onClick = onOpenSchedules)
-                        ValueRow("Precision mode", "", onClick = onOpenPrecision)
                         ValueRow("Notification filter", "", onClick = onOpenNotifications)
                         ValueRow("Monochrome", "", onClick = onOpenMonochrome)
                         ValueRow("Hidden apps", "", onClick = onOpenHidden)
@@ -373,7 +371,14 @@ fun SettingsScreen(
                     block {
                         SwitchRow("Swipe up for search", s.swipeUpSearch) { v -> update { it.copy(swipeUpSearch = v) } }
                         SwitchRow("Swipe down for notifications", s.swipeDownNotifications) { v -> update { it.copy(swipeDownNotifications = v) } }
-                        SwitchRow("Double tap to lock", s.doubleTapLock) { v -> update { it.copy(doubleTapLock = v) } }
+                        val lockCtx = androidx.compose.ui.platform.LocalContext.current
+                        SwitchRow("Double tap to lock", s.doubleTapLock) { v ->
+                            update { it.copy(doubleTapLock = v) }
+                            // Locking needs device admin; giving it up again keeps Quiet uninstallable.
+                            val lc = app.quiet.launcher.feature.focus.LockController
+                            if (v && !lc.isAdminActive(lockCtx)) app.quiet.launcher.core.platform.Permissions.launch(lockCtx, lc.adminIntent(lockCtx))
+                            if (!v) lc.removeAdmin(lockCtx)
+                        }
                         SwitchRow("Open keyboard in All apps", s.autoKeyboard) { v -> update { it.copy(autoKeyboard = v) } }
                         SwitchRow("Draw a letter to open an app", gesture.letters) { v -> gesturePrefs.setLetters(v) }
                         if (gesture.letters) {

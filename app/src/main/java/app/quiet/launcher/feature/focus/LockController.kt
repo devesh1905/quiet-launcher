@@ -8,17 +8,15 @@ import android.content.Intent
 import android.util.Log
 import app.quiet.launcher.R
 
-/** Double-tap to lock. Accessibility first (keeps biometric unlock), device admin as fallback. */
+/** Double-tap to lock, as a device admin. */
 object LockController {
 
     /**
-     * Locks the screen. Uses the precision-mode accessibility service when it is connected,
-     * else DevicePolicyManager.lockNow when Quiet is a device admin, else returns false so the
-     * caller can offer setup.
+     * Locks the screen with DevicePolicyManager.lockNow when Quiet is a device admin, else
+     * returns false so the caller can offer setup.
      */
     @JvmStatic
     fun lockNow(context: Context): Boolean {
-        QuietAccessibilityService.instance?.let { if (it.lockScreen()) return true }
         val dpm = context.getSystemService(DevicePolicyManager::class.java) ?: return false
         if (!dpm.isAdminActive(adminComponent(context))) return false
         return try {
@@ -32,8 +30,7 @@ object LockController {
 
     /** True when some way of locking is available right now. */
     @JvmStatic
-    fun canLock(context: Context): Boolean =
-        QuietAccessibilityService.instance != null || isAdminActive(context)
+    fun canLock(context: Context): Boolean = isAdminActive(context)
 
     fun adminComponent(context: Context) = ComponentName(context.applicationContext, QuietDeviceAdminReceiver::class.java)
 

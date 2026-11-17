@@ -42,7 +42,6 @@ fun FocusSettingsScreen(
     onBack: () -> Unit,
     onOpenSchedules: (() -> Unit)? = null,
     onOpenBlockApp: ((packageName: String) -> Unit)? = null,
-    onOpenPrecisionMode: (() -> Unit)? = null,
     onOpenFocusSession: (() -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
@@ -163,11 +162,10 @@ fun FocusSettingsScreen(
             )
         }
 
-        if (onOpenSchedules != null || onOpenPrecisionMode != null || onOpenFocusSession != null) item {
+        if (onOpenSchedules != null || onOpenFocusSession != null) item {
             SectionTitle("More")
             onOpenSchedules?.let { NavRow("Blocking schedules", subtitle = "Block apps at set times of day", onClick = it) }
             onOpenFocusSession?.let { NavRow("Focus session", subtitle = "A countdown with only the apps you choose", onClick = it) }
-            onOpenPrecisionMode?.let { NavRow("Precision mode", subtitle = "Exact detection, short videos, websites", onClick = it) }
         }
     }
 }

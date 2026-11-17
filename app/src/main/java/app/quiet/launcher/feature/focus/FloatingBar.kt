@@ -22,8 +22,7 @@ import android.widget.TextView
  *
  * Plain Views on purpose: a ComposeView in a WindowManager window needs its own lifecycle and
  * saved-state owners, and this is two lines of text. Drawn with the dark tokens in both themes,
- * because it floats over other apps' colours. Uses TYPE_ACCESSIBILITY_OVERLAY while precision
- * mode is on (no overlay permission needed), else TYPE_APPLICATION_OVERLAY.
+ * because it floats over other apps' colours. Needs the draw-over-apps permission.
  */
 class FloatingBar(private val app: Context) {
     private var view: BarView? = null
@@ -31,12 +30,11 @@ class FloatingBar(private val app: Context) {
     private var wm: WindowManager? = null
 
     fun show(remainingMs: Long, grantedMs: Long, onHideVisit: () -> Unit, onHideAlways: () -> Unit) {
-        val svc = QuietAccessibilityService.instance
-        val target: Context = svc ?: app
-        if (svc == null && !Settings.canDrawOverlays(app)) return
+        val target: Context = app
+        if (!Settings.canDrawOverlays(app)) return
         if (view == null || host !== target) {
             hide()
-            if (!attach(target, svc != null)) return
+            if (!attach(target, false)) return
         }
         view?.update(remainingMs, grantedMs, onHideVisit, onHideAlways)
     }
