@@ -1,5 +1,6 @@
 package app.quiet.launcher.feature.focus
 
+import app.quiet.launcher.feature.underwater.engine.Underwater
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -28,6 +29,11 @@ class FocusService : Service() {
     override fun onCreate() {
         super.onCreate()
         ensureChannel(this)
+        // The other Quiet edition is home and runs its own focus service.
+        if (!Underwater.ownsDevice(this)) {
+            stopSelf()
+            return
+        }
         if (!enterForeground()) {
             stopSelf()
             return
@@ -97,8 +103,8 @@ class FocusService : Service() {
                 return
             }
             val intent = Intent(app, FocusService::class.java)
-            if (!needed) {
-                if (running) app.stopService(intent)
+            if (!needed || !Underwater.ownsDevice(app)) {
+                app.stopService(intent)
                 running = false
                 return
             }

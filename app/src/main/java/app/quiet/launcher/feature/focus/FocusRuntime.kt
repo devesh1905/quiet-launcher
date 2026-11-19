@@ -1,5 +1,6 @@
 package app.quiet.launcher.feature.focus
 
+import app.quiet.launcher.feature.underwater.engine.Underwater
 import android.annotation.SuppressLint
 import android.app.NotificationManager
 import android.content.Context
@@ -225,6 +226,7 @@ class FocusRuntime private constructor(private val app: Context) {
             floatingBar.hide()
             return
         }
+        if (!owns()) { floatingBar.hide(); return }
         floatingBar.show(
             remainingMs = e.remainingMs,
             grantedMs = e.grantedMs,
@@ -236,15 +238,21 @@ class FocusRuntime private constructor(private val app: Context) {
         )
     }
 
+    /** The other Quiet edition is home: it runs its own focus checks, so this one stays quiet. */
+    private fun owns() = Underwater.ownsDevice(app)
+
     fun showGate(pkg: String, params: GateParams, fromLauncher: Boolean = false) {
+        if (!fromLauncher && !owns()) return
         start(MindfulLaunchActivity.intent(app, pkg, params, fromLauncher))
     }
 
     fun showTimesUp(pkg: String, params: TimesUpParams, fromLauncher: Boolean = false) {
+        if (!fromLauncher && !owns()) return
         start(TimesUpActivity.intent(app, pkg, params, fromLauncher))
     }
 
     fun showBlocked(pkg: String, info: BlockInfo) {
+        if (!owns()) return
         start(BlockedActivity.intent(app, pkg, info))
     }
 
