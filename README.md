@@ -1,164 +1,160 @@
-<p align="center">
-  <img src="docs/images/icon.png" width="112" alt="Quiet app icon: a thin gallery frame holding a half-set sun over a horizon">
-</p>
-
-<h1 align="center">Quiet</h1>
+<h1 align="center">Quiet Underwater</h1>
 
 <p align="center">
-  A calm, text-only Android launcher that helps you use your phone less.<br>
-  The phone stays almost colourless; colour arrives only through art and music.
+  A calm Android launcher where the home screen is water and everything you touch is glass.<br>
+  The water level is your battery. The painting of the day lies beneath it.
 </p>
 
-<p align="center">
-  <img src="docs/images/home.png" width="230" alt="Home: a large serif clock, date, battery line, today's screen time with an hour-by-hour strip, and favourite apps as plain text">
-  <img src="docs/images/player.png" width="230" alt="Now playing: the album cover in a gallery frame with its title, artist and controls over a soft colour field taken from the cover">
-  <img src="docs/images/lock-art.png" width="230" alt="Lock screen: a public-domain painting hung on a black wall under a picture light, with a museum label">
-</p>
+> Quiet Underwater is an edition of **[Quiet](https://github.com/devesh1905/quiet-launcher)**, a text-only launcher
+> that helps you use your phone less. It's the same app with the same features, rebuilt around real water and glass
+> physics. You can switch back to the classic look at any time in Settings.
 
-> Screenshots are rendered from the design previews with placeholder artwork. Cover art and
-> paintings on a real phone come from your music app and from open museum collections.
+## The idea
 
-## Why
+**Water is the world; glass is what you touch.**
 
-Colourful icons, feeds and badges are built to pull you back in. Quiet removes the pull instead
-of adding another app to fight it: apps are names, not icons; usage is shown honestly in words;
-the lock screen is a painting, not a notification wall. There are no streaks, points or confetti.
+- **Water** fills the background and shows state: its level is your battery, it ripples under your finger, it
+  sloshes when you tilt the phone, and the day's painting bends beneath it.
+- **Glass** is used for everything you interact with: the dock, buttons, search, sheets, notifications and the
+  keyboard. Every piece refracts the water and the painting behind it.
 
 ## Features
 
-**Home**
-- Large clock (Fraunces), date, a hairline battery line with a small charging spark
-- Today's screen time against your daily budget, pickups, and a day strip of minutes per hour
-- Favourite apps as text; long press any app to add, rename, hide, block or uninstall
-- Phone and camera on the corners; swipe left for all apps, up for Google search, down for notifications, double tap to lock
+### Home
+- Calm water over the day's painting. The waterline sits at your battery level, with a label such as
+  "Fast charging · 62%" riding on it.
+- Touch makes ripples, and tilting sloshes the water. The painting shifts slightly against your tilt, so the
+  screen has real depth.
+- Long-press the water to change the painting: the old one sinks and the new one surfaces.
+- Your favourite apps sit on a glass dock that floats on the water.
+- Opening an app drops a glass drop into the water, and the app opens out of the splash.
 
-**Now playing**
-- The cover appears as a small framed card; tap it and it opens into a framed artwork with a gallery label
-- The cover's own colours drift behind it through an AGSL shader, capped so text always stays readable
-- Long press to hide it until the next song or turn it off
+### Folders and notifications
+- **Folders:** hold an app and drag it onto another; the two drops merge into a folder. Tap the folder to pop
+  it open. Drag an app out and it stretches, snaps and drips back into the water.
+- **Notification bubbles:** each notification rises from the USB port as a glass bubble with the app's icon
+  inside. You can grab, drag and flick bubbles. Bubbles from different apps bounce off each other like balls;
+  bubbles from the same app merge. Tap one to open it as a frosted card, or flick it off the bottom to
+  dismiss it.
 
-**All apps**
-- Search that opens the top match on Enter, letter sections, work-profile apps
-- An A to Z scroller with a magnifying wave, a trailing letter bubble and haptic ticks
+### All apps and search
+- **Rail:** an A to Z rail on a glass rod, with a magnifying bead that follows your finger.
+- **Search:** a glass search pill that stretches as you type.
+- **Glass keyboard:** keys that press on springs, ripple the water and clink as you type. It has voice search
+  and a switch to your normal keyboard.
+- **Sheets:** frosted glass sheets slide over the moving water.
 
-**Lock screen**
-- Five styles: *Daily masterpiece* (public-domain paintings from the Art Institute of Chicago, The Met and the Cleveland Museum of Art), *Quiet canvas* (generative art that gets calmer the less you used your phone), *Tonight's sky* (the real moon phase and today's sun path), *Typeset* (a type poster) and *Cover of the moment*
-- Three lock typefaces (Bodoni Moda, Instrument Serif, Big Shoulders); press and hold the lock screen to switch styles and fonts
-- Works two ways: as the **system lock-screen wallpaper** (your phone keeps its own clock and fingerprint unlock) or as **Quiet's own lock screen** with an interactive music player
-- The lock-screen player has one **play orb** instead of buttons. Tap it or the cover to pause; drag it sideways to change song. Its colours are toned from the cover. Five styles: *Glass drop*, *Ink drop*, *Marble*, *Little sun* and *Buttons*
-- **Charging animations** with real physics, refracting the painting: *Flood* (water pours in through the USB port and fills the screen to the battery level), *Filling glass*, *Light thread* and *Clock fill*; chosen in Settings › Lock screen › Charging
+### Music
+- **Player:**
+  - The cover floats on the water and bobs with the waves.
+  - The play orb is a glass drop resting on the surface.
+  - You seek along the waterline.
+  - Changing songs sinks the old cover while the new one rises and breaks the surface.
+- **Lock screen with music:** the cover tints the painting, the light in the water and the glow around it with
+  its own colours.
 
-**Focus**
-- A **Focus page** one swipe right of Home: start 25/50/90-minute sessions, pause distracting apps for an hour, grayscale for an hour, see what's blocked and switch schedules on or off
-- **Hold the clock** for the same quick actions; Quick Settings tiles for **Focus** and **Grayscale**
-- During a session **Home becomes the countdown**: the clock morphs into it, with your intention, the apps you allowed and press-and-hold to end early
-- **Preset chips** on every focus list (Distracting, Games, Social, Video, Shopping and more), worked out automatically from each app's category and known publishers
-- **Focus sessions only offer useful apps**: distracting ones are left out, with Essentials, Messaging, Money, Travel and Work presets; your last allowed set is remembered
-- In-app time reminders per app: when time is up, just remind, close the app and block it for a while, or make you wait before reopening
-- A breathing pause before opening watched apps that grows with each open, an intention question, a floating time-left bar, daily limits per app
-- Block any app for 1 hour to 30 days, blocking schedules by weekday (overnight spans work), focus sessions with Do Not Disturb
-- No accessibility service: payment and bank apps (GPay, PhonePe, Paytm, BHIM) refuse to run while one is on, so Quiet doesn't ship one. App detection uses usage access; double-tap lock uses device admin
-- Payment, bank, authenticator and security apps are never blocked by sessions, blocks or schedules
-- Notification filter: only the apps you allow can interrupt; everything else is held quietly for 7 days
-- Monochrome: grayscale for chosen apps, or everything during a wind-down window
-- Screen time screen: today, 7 days, per-app minutes and a plain weekly sentence
+### Lock screen
+- **Water theme:** today's painting lies under water at your battery level, with the clock reflected in the
+  surface. Swiping up pulls the water away to unlock, and the fingerprint spot is a glass drop.
+- **Charging styles:**
+  - **Flood:** water gushes from the USB port and fills the screen to your battery level.
+  - **Filling glass:** a drop on the fingerprint spot fills with liquid light.
+  - **Light thread:** a glowing rope that sways and snaps.
+  - **Clock fill:** the clock digits fill with liquid.
+- **Charging text:** "Slow charging", "Charging", "Fast charging", "Charging rapidly" or "Charged", worked out
+  from the real charging current.
+- **Show-off:** hold two fingers on the lock screen to play the Flood without a charger.
 
-<p align="center">
-  <img src="docs/images/apps.png" width="190" alt="All apps list with search, letter sections and an A to Z rail">
-  <img src="docs/images/launch.png" width="190" alt="Mindful pause: a breathing ink ring and the question 'How long?' before opening a watched app">
-  <img src="docs/images/usage.png" width="190" alt="Screen time: today's total, a 7-day bar chart and per-app minutes">
-  <img src="docs/images/settings.png" width="190" alt="Settings: a short index of pages (Focus and screen time, Home, Lock screen, Art, Look and motion, Gestures, Permissions, About), each with a one-line summary">
-</p>
-<p align="center">
-  <img src="docs/images/lock-canvas.png" width="190" alt="Quiet canvas: generative dusk horizon lock screen">
-  <img src="docs/images/lock-sky.png" width="190" alt="Tonight's sky: the real moon phase over a sun-path arc">
-  <img src="docs/images/lock-type.png" width="190" alt="Typeset: the hour solid and the minutes in outline as a poster">
-  <img src="docs/images/lock-player.png" width="190" alt="Lock screen music player: the framed cover over its colour field, a seek line, the glass-drop play orb and the fingerprint ring">
-</p>
-<p align="center">
-  <img src="docs/images/device-lock.png" width="230" alt="Real device: a Van Gogh etching on the lock screen with its museum label and a fingerprint ring over the sensor"><br>
-  <sub>On a real phone (Xiaomi, HyperOS 3)</sub>
-</p>
+### Haptics
+A small set of water and glass haptics built on the phone's own vibration primitives, all rate-limited:
+- Drip when a ripple starts;
+- Clink for glass, scaled by how hard it's hit;
+- Plunk for merges and landings;
+- Pop for splits;
+- Rise when you drag glass across the waterline.
+
+### Plus everything in Quiet
+Screen time, app reminders and blocks, focus sessions, schedules, the notification filter, monochrome mode and
+the daily painting. See the [Quiet README](https://github.com/devesh1905/quiet-launcher#readme).
+
+## How it works
+
+- **Rendering:** one AGSL `RuntimeShader`, applied as a `RenderEffect` over the live home screen, draws the water
+  and up to 16 glass bodies in a single pass. Content under the water stays live and refracts.
+- **Water:** two simulations run on the CPU.
+  - The waterline is a spring surface of 96 columns, tilted by the gravity sensor.
+  - Beneath it is a 2D ripple grid (about 90 × 190 cells) uploaded each frame as a small float texture.
+  - Caustics come from the surface curvature, absorption is tinted by the painting, and the meniscus and glints
+    are drawn in the same pass.
+- **Glass:** each body is a signed-distance shape with a narrow dome edge and a spring body. The shading adds
+  per-channel refraction, fresnel, a tight specular highlight and a rim line. Bodies in the same group merge with
+  a smooth minimum.
+- **Physics:** steps at a fixed 120 Hz with the time step clamped, so it feels the same at any frame rate.
+
+### Battery
+
+The water only animates while something moves: a touch, a tilt, a notification or a level change.
+- After that, it shimmers at 30 fps for 3 s, then stops completely: no frames, no timers.
+- The gravity sensor runs only while the water is moving; otherwise a low-power accelerometer at 5 Hz watches
+  for movement.
+- Reduced motion or battery saver gives a single still frame.
+
+Measured on a Poco F6 over 3 minutes of mixed use:
+
+| | Classic Quiet | Quiet Underwater |
+|---|---|---|
+| Battery per minute | ~3.3 mAh | ~3.7 mAh |
+| Frames drawn in an idle minute | ~3,500 | ~6 |
+
+Home runs at about 60–75 fps on a 120 Hz screen.
 
 ## Install
 
-1. Download the APK from [Releases](../../releases), or build it yourself (below).
-2. Install it, then make Quiet your home app (see [Device setup](docs/DEVICE-SETUP.md) for your phone's exact menus).
-3. Open Quiet → Settings → **Permissions** and grant what you want to use.
+1. Download `quiet-underwater-*.apk` from [Releases](../../releases).
+2. Install it. It installs as its own app, **Quiet Underwater** (`app.quiet.launcher.underwater`), next to
+   classic Quiet if you have it.
+3. Make it your home app, then open Settings → **Permissions** and grant what you want to use.
 
-Quiet is a personal project and is not on the Play Store. Installing over adb or from Android Studio avoids
-Android 13+ "restricted settings" for notification access.
+Needs Android 13 or newer for the water and glass. On older versions, it falls back to the classic look.
 
-### Install over adb
+**Classic switch:** Settings → Look and motion → **Underwater**. Turn it off for classic Quiet's look in the
+same app.
 
-```bash
-./gradlew :app:testDebugUnitTest :app:assembleRelease
-adb install -r app/build/outputs/apk/release/app-release.apk
-adb shell cmd role add-role-holder --user 0 android.app.role.HOME app.quiet.launcher 0
-```
+**With classic Quiet also installed:** only the edition that is your home app runs the lock screen, focus checks
+and background jobs, so you never get two prompts or two lock screens.
 
-For the full workflow (safe install with a fallback launcher, granting every permission, set-up commands for
-favourites, the notification filter and focus rules) see **[AGENTS.md](AGENTS.md)**. It's written so coding agents
-can follow it step by step.
+## Permissions
 
-## Permissions and why
-
-| Permission | Used for | Needed? |
-|---|---|---|
-| Usage access | Screen time, day strip, app reminders and blocks | Recommended |
-| Notification access | Now playing (cover art and controls), notification filter | Recommended |
-| Display over other apps | Floating time bar, pauses and Quiet's lock screen | For focus features |
-| Device admin (lock only) | Double tap to lock | Optional |
-| Modify system settings | Short screen timeout while Quiet's lock screen is up | Optional |
-| Do Not Disturb access | Focus sessions | Optional |
-| `WRITE_SECURE_SETTINGS` (adb only) | Monochrome mode | Optional |
-
-Grant monochrome once from a computer:
-
-```bash
-adb shell pm grant app.quiet.launcher android.permission.WRITE_SECURE_SETTINGS
-```
-
-## Privacy
-
-No analytics, no ads, no account, no crash reporting. The only network calls fetch public-domain
-paintings from museum APIs (a few a day, a few MB, on Wi-Fi or mobile data). Usage data and held notifications
-stay on the phone.
+The same as Quiet. See [Permissions and why](https://github.com/devesh1905/quiet-launcher#permissions-and-why).
+Replace the package name with `app.quiet.launcher.underwater` in the adb commands.
 
 ## Build
 
-Requirements: JDK 17+ and the Android SDK (compile SDK 36). From the project folder:
+Requirements: JDK 17+ and the Android SDK (compile SDK 36). The project has two product flavors:
 
 ```bash
-./gradlew :app:testDebugUnitTest :app:assembleRelease
+./gradlew :app:assembleUnderwaterRelease   # Quiet Underwater -> app/build/outputs/apk/underwater/release/
+./gradlew :app:assembleClassicRelease      # classic Quiet    -> app/build/outputs/apk/classic/release/
 ```
 
-The APK lands in `app/build/outputs/apk/release/`. The release build is signed with the debug key
-for personal installs; set up your own signing config before distributing it.
+The release build is signed with the debug key for personal installs. Set up your own signing config before
+distributing it.
 
-**Stack:** Kotlin, Jetpack Compose, AGSL runtime shaders (Android 13+, with fallbacks), Room,
-DataStore, WorkManager, OkHttp, kotlinx.serialization. Single module, manual dependency injection.
+The underwater code lives in `app/src/main/java/app/quiet/launcher/feature/underwater/`:
+- `engine/` holds the water, the glass bodies, the shader and the frame loop.
+- The lock screen's Water theme is in `feature/lock/water/`, and the charging animations are in
+  `feature/lock/charge/`.
 
-```
-app/src/main/java/app/quiet/launcher/
-  core/          models, repositories (apps, usage, settings), platform helpers, astronomy
-  designsystem/  colour and type tokens, motion, gallery frame, day strip, shaders
-  feature/
-    home/ apps/ player/ lock/ art/ media/ usage/ settings/
-    focus/ notifications/ monochrome/ hidden/
-  service/       lock service, boot receiver, adb set-up commands
-```
+## Privacy
 
-## Known limitations
-
-- **Gestures:** some phones (notably Xiaomi HyperOS) only allow full-screen gestures with their own launcher. Use 3-button navigation there. See [Device setup](docs/DEVICE-SETUP.md).
-- **Fingerprint on Quiet's lock screen:** Android stops the system fingerprint reader while another screen covers the keyguard. Quiet's lock screen hands over to the system unlock; for one-touch fingerprint unlock, use the *system lock-screen wallpaper* mode.
-- **Short-video detection** relies on view IDs inside other apps and may need updating when those apps change. The rules live in `app/src/main/assets/focus_rules.json`.
+No analytics, no ads, no account and no crash reporting. The only network calls fetch public-domain paintings
+from museum APIs.
 
 ## Credits
 
-- Fonts under the SIL Open Font License: Fraunces, Geist, Bodoni Moda, Instrument Serif, Big Shoulders Display
-- Paintings: public-domain works from the Art Institute of Chicago, The Metropolitan Museum of Art and the Cleveland Museum of Art open-access collections; credit is shown with each work
+- **Fonts** under the SIL Open Font License: Fraunces, Geist, Bodoni Moda, Instrument Serif, Big Shoulders Display.
+- **Paintings:** public-domain works from the Art Institute of Chicago, The Metropolitan Museum of Art and the
+  Cleveland Museum of Art open-access collections.
 
 ## License
 
