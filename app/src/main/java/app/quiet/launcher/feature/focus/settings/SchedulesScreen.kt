@@ -307,7 +307,7 @@ private fun GuidedSetup(onBack: () -> Unit, onCreate: (List<Schedule>) -> Unit) 
 internal fun WaitFirst(title: String, detail: String, onCancel: () -> Unit, onDone: () -> Unit) {
     val c = Q.colors
     val pause = rememberPause(15) {}
-    Box(Modifier.fillMaxSize().background(c.bg).padding(horizontal = InterGutter)) {
+    Box(Modifier.fillMaxSize().background(app.quiet.launcher.feature.underwater.overlayScreenBg()).padding(horizontal = InterGutter)) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
             Spacer(Modifier.height(48.dp))
             Txt(title, QType.question(32.sp), c.ink)

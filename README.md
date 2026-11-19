@@ -46,6 +46,7 @@ the lock screen is a painting, not a notification wall. There are no streaks, po
 - Three lock typefaces (Bodoni Moda, Instrument Serif, Big Shoulders); press and hold the lock screen to switch styles and fonts
 - Works two ways: as the **system lock-screen wallpaper** (your phone keeps its own clock and fingerprint unlock) or as **Quiet's own lock screen** with an interactive music player
 - The lock-screen player has one **play orb** instead of buttons. Tap it or the cover to pause; drag it sideways to change song. Its colours are toned from the cover. Five styles: *Glass drop*, *Ink drop*, *Marble*, *Little sun* and *Buttons*
+- **Charging animations** with real physics, refracting the painting: *Flood* (water pours in through the USB port and fills the screen to the battery level), *Filling glass*, *Light thread* and *Clock fill*; chosen in Settings › Lock screen › Charging
 
 **Focus**
 - A **Focus page** one swipe right of Home: start 25/50/90-minute sessions, pause distracting apps for an hour, grayscale for an hour, see what's blocked and switch schedules on or off

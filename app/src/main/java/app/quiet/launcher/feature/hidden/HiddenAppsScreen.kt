@@ -49,7 +49,7 @@ fun HiddenAppsScreen(onBack: () -> Unit) {
     val hidden = remember(all) { all.filter { it.hidden } }
     BackHandler(onBack = onBack)
 
-    Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+    Box(Modifier.fillMaxSize().background(app.quiet.launcher.feature.underwater.overlayScreenBg())) {
         LazyColumn(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 48.dp),

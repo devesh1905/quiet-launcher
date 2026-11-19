@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Quiet Underwater</string>
+    <string name="media_listener_label">Quiet Underwater now playing</string>
+</resources>

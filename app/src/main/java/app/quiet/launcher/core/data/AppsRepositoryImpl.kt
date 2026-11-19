@@ -41,7 +41,7 @@ import kotlinx.serialization.json.Json
 import java.io.File
 
 private const val TAG = "AppsRepository"
-private const val OWN_PACKAGE = "app.quiet.launcher"
+private val OWN_PACKAGE = app.quiet.launcher.BuildConfig.APPLICATION_ID
 private const val REFRESH_DEBOUNCE_MS = 300L
 
 /** One row of the cold-start cache (apps_cache.json). */

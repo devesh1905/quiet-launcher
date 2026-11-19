@@ -82,6 +82,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import app.quiet.launcher.core.model.LockFont
 import app.quiet.launcher.core.model.LockStyle
 import app.quiet.launcher.core.model.PlayerControl
+import app.quiet.launcher.core.model.ChargeAnim
 import app.quiet.launcher.core.model.ThemeMode
 import app.quiet.launcher.core.platform.Permissions
 import app.quiet.launcher.designsystem.Q
@@ -135,6 +136,14 @@ private object Page {
     const val ABOUT = "about"
 }
 
+private fun chargeName(a: ChargeAnim) = when (a) {
+    ChargeAnim.OFF -> "Off"
+    ChargeAnim.GLASS -> "Filling glass"
+    ChargeAnim.FLOOD -> "Flood"
+    ChargeAnim.THREAD -> "Light thread"
+    ChargeAnim.CLOCK -> "Clock fill"
+}
+
 private fun themeName(t: ThemeMode) = when (t) {
     ThemeMode.BLACK -> "Black"
     ThemeMode.LIGHT -> "Light"
@@ -182,7 +191,7 @@ fun SettingsScreen(
     val reduced = Q.reducedMotion
     val back = { page = Page.ROOT }
 
-    Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+    Box(Modifier.fillMaxSize().background(app.quiet.launcher.feature.underwater.overlayScreenBg())) {
         AnimatedContent(
             targetState = page,
             modifier = Modifier.fillMaxSize(),
@@ -312,6 +321,21 @@ fun SettingsScreen(
                             },
                         ) { i -> update { it.copy(ambientStrength = floatArrayOf(0f, 0.6f, 1f)[i]) } }
                     }
+                    subsection("Charging") {
+                        Text(
+                            "What the lock screen does while the phone charges.",
+                            QType.secondary(14.sp), Q.colors.muted, Modifier.padding(horizontal = Gutter).padding(bottom = 8.dp),
+                        )
+                        FlowRow(
+                            Modifier.padding(horizontal = Gutter).padding(bottom = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            listOf(ChargeAnim.OFF, ChargeAnim.GLASS, ChargeAnim.FLOOD, ChargeAnim.THREAD, ChargeAnim.CLOCK).forEach { a ->
+                                Chip(chargeName(a), s.lockCharging == a) { update { it.copy(lockCharging = a) } }
+                            }
+                        }
+                    }
                     subsection("Tonight's sky") {
                         Text(
                             "Where you are, so the sky style shows the stars above you.",
@@ -356,6 +380,16 @@ fun SettingsScreen(
                 }
 
                 Page.LOOK -> SubPage("Look and motion", back) {
+                    if (app.quiet.launcher.feature.underwater.engine.Underwater.supported) block {
+                        val uwPrefs = remember { app.quiet.launcher.feature.underwater.engine.UnderwaterPrefs.get(ctx) }
+                        val uwOn by uwPrefs.on.collectAsState()
+                        SwitchRow("Underwater", uwOn) { v -> uwPrefs.setOn(v) }
+                        Text(
+                            if (uwOn) "Water and glass: the battery is the waterline, the dock floats. Always dark."
+                            else "Off: the classic Quiet look.",
+                            QType.secondary(14.sp), Q.colors.muted, Modifier.padding(horizontal = Gutter).padding(bottom = 8.dp),
+                        )
+                    }
                     block {
                         Label("Theme")
                         SegmentedRow(

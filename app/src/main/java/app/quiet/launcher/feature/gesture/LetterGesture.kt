@@ -179,6 +179,11 @@ fun LetterGestureLayer(
                     var pressed = 0
                     for (c in ev.changes) if (c.pressed) pressed++
                     val ch = ev.changes.firstOrNull { it.id == down.id }
+                    // Something under the finger took this gesture for itself (a grabbed underwater bubble).
+                    if (GestureClaim.owner == down.id) {
+                        if (drawing) s.phase = LetterState.Phase.None
+                        return@awaitEachGesture
+                    }
                     if (ch == null || pressed > 1) {
                         if (drawing) { s.phase = LetterState.Phase.None }
                         return@awaitEachGesture
@@ -272,4 +277,13 @@ private fun LetterOverlay(s: LetterState, reduced: Boolean) {
 private fun Modifier.centredAt(x: Float, y: Float) = layout { m, cs ->
     val p = m.measure(cs.copy(minWidth = 0, minHeight = 0))
     layout(cs.maxWidth, cs.maxHeight) { p.place((x - p.width / 2).toInt(), (y - p.height / 2).toInt()) }
+}
+
+/**
+ * A pointer that a child has taken for its own drag (Quiet Underwater's bubbles grab on touch, with
+ * no long press first): the letter layer, which watches every gesture from above, lets it go.
+ * Classic Quiet never sets it.
+ */
+object GestureClaim {
+    var owner: androidx.compose.ui.input.pointer.PointerId? = null
 }

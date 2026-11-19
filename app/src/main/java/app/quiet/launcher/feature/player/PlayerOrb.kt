@@ -125,7 +125,10 @@ class OrbState internal constructor() {
 fun rememberOrbState(): OrbState = remember { OrbState() }
 
 private const val CHANGE_AT = 0.22f
-private val OrbRadius = 30.dp
+internal val OrbRadius = 30.dp
+
+/** The orb's beat (0..1, a sharp pulse 1.55 times a second): what it breathes with while playing. */
+internal fun orbBeat(time: Float): Float = max(0f, sin(time * 2f * PI.toFloat() * 1.55f)).pow(6)
 
 @Composable
 fun PlayerOrb(
@@ -137,6 +140,10 @@ fun PlayerOrb(
     height: Dp = 104.dp,
     /** False while the screen is off or the lock screen is not in front: no frames at all. */
     running: Boolean = true,
+    /** The feel of a tap (play/pause). The underwater player's glass drop clinks. */
+    tapFeel: Feel = Feel.Click,
+    /** Called when a fling changes the song (-1: next, +1: previous), right after the repo is asked. */
+    onSongChange: ((Int) -> Unit)? = null,
 ) {
     val haptics = rememberHaptics()
     val density = LocalDensity.current.density
@@ -148,6 +155,7 @@ fun PlayerOrb(
     val tones = tonePalette(np.palette)
     val pal = List(4) { i -> animateColorAsState(tones[i], tween(900), label = "orb$i").value }
     val playing by rememberUpdatedState(np.isPlaying)
+    val songChange by rememberUpdatedState(onSongChange)
     var widthPx by remember { mutableFloatStateOf(0f) }
     val shader = rememberOrbShader(style)
 
@@ -163,6 +171,7 @@ fun PlayerOrb(
                 stepOrb(state, dt, alive, widthPx, density) { dir ->
                     if (dir < 0) repo.next() else repo.previous()
                     haptics.play(Feel.Click)
+                    songChange?.invoke(dir)
                 }
                 state.tick = now
             }
@@ -199,7 +208,7 @@ fun PlayerOrb(
                     if (start == null) {
                         val up = currentEvent.changes.firstOrNull { it.id == down.id }
                         if (up != null && !up.pressed && !up.isConsumed && up.uptimeMillis - down.uptimeMillis < 450) {
-                            haptics.play(Feel.Click)
+                            haptics.play(tapFeel)
                             state.vs += 9f
                             repo.playPause()
                         }
@@ -232,7 +241,7 @@ fun PlayerOrb(
             },
     ) {
         state.tick // redraw every stepped frame
-        val beat = if (np.isPlaying && !reduced && running) max(0f, sin(state.time * 2f * PI.toFloat() * 1.55f)).pow(6) else 0f
+        val beat = if (np.isPlaying && !reduced && running) orbBeat(state.time) else 0f
         renderOrb(style, shader, state, pal, Offset(size.width / 2f + state.x, size.height * 0.46f), OrbRadius.toPx(), beat)
     }
 }

@@ -80,7 +80,8 @@ fun HomeScreen(
     val usagePerm by container.usage.hasPermission.collectAsStateWithLifecycle()
     val minute by container.device.minuteTick.collectAsStateWithLifecycle()
     val battery by container.device.battery.collectAsStateWithLifecycle()
-    val np by container.nowPlaying.state.collectAsStateWithLifecycle()
+    // (A fake song only when the adb test file exists: see PlayerTestHook.)
+    val np by app.quiet.launcher.feature.player.PlayerTestHook.nowPlaying(ctx, container.nowPlaying.state).collectAsStateWithLifecycle()
     // Long press on the card: hide it until the next song, or turn music off on Home (back on in Settings).
     var hiddenTrack by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     var cardMenu by remember { mutableStateOf(false) }
@@ -110,7 +111,8 @@ fun HomeScreen(
         Box(Modifier.fillMaxSize()) {
             // Colour pools softly around the card on Home (u_pool 1.0, cap 0.014).
             val glowTrack = np?.track?.id?.substringBefore('|')
-            if (isActive && settings.homeGlow && glowTrack != glowHiddenTrack) AmbientField(
+            val water = app.quiet.launcher.feature.underwater.engine.LocalWater.current
+            if (water == null && isActive && settings.homeGlow && glowTrack != glowHiddenTrack) AmbientField(
                 palette = nowPlaying?.palette, artRect = null, modifier = Modifier.fillMaxSize(),
                 maxLum = 0.014f, glow = 0.6f, pool = 0f, strength = settings.ambientStrength * 0.8f,
                 running = isActive && awake && nowPlaying?.isPlaying == true && !playerOpen,
@@ -141,7 +143,24 @@ fun HomeScreen(
                     else if (!up && settings.swipeDownNotifications) SystemActions.expandNotifications(ctx)
                 },
             ) {
-            HomeContent(
+            if (water != null) app.quiet.launcher.feature.underwater.UnderwaterHomeContent(
+                host = water,
+                minute = minute, is24h = is24h, batteryLevel = battery.level, charging = battery.charging,
+                usage = usage, usagePerm = usagePerm, showUsage = settings.showUsageOnHome, favourites = favourites,
+                oneThing = settings.oneThingToday,
+                nowPlaying = nowPlaying, playerOpen = playerOpen,
+                onOpenPlayer = { onPlayerOpenChange(true) },
+                onCardLongPress = { cardMenu = true },
+                onBackgroundLongPress = { if (np != null) glowMenu = true },
+                onOpenUsage = onOpenUsage,
+                onAppLongPress = onAppLongPress,
+                swipeUp = settings.swipeUpSearch, swipeDown = settings.swipeDownNotifications,
+                sharedScope = this@SharedTransitionLayout,
+                contentScope = this@AnimatedContent,
+                onClockLongPress = { quickMenu = true },
+                hapticClockOn = gesture.hapticClock,
+                active = isActive && !quickMenu && !cardMenu && !glowMenu,
+            ) else HomeContent(
                 minute = minute, is24h = is24h, batteryLevel = battery.level, charging = battery.charging,
                 usage = usage, usagePerm = usagePerm, showUsage = settings.showUsageOnHome, favourites = favourites,
                 oneThing = settings.oneThingToday,
@@ -393,7 +412,7 @@ private fun BatteryHairline(level: Float, charging: Boolean) {
 }
 
 @Composable
-private fun UsageBlock(usage: UsageToday, compact: Boolean, onClick: () -> Unit) {
+internal fun UsageBlock(usage: UsageToday, compact: Boolean, onClick: () -> Unit) {
     val c = Q.colors
     val over = usage.totalMs - usage.budgetMs
     Column(Modifier.fillMaxWidth().pressable(pressedScale = 0.99f, pressedAlpha = 0.75f, onClick = onClick)) {

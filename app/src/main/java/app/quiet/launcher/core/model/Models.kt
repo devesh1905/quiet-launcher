@@ -94,6 +94,8 @@ enum class LockFont { BODONI, INSTRUMENT, SHOULDERS }
 enum class ThemeMode { BLACK, LIGHT, SYSTEM }
 /** The lock-screen player's control: one of the play orbs, or the classic three buttons. */
 enum class PlayerControl { DROP, MARBLE, SUN, GLASS, BUTTONS }
+/** What the lock screen shows while the phone charges. */
+enum class ChargeAnim { OFF, GLASS, FLOOD, THREAD, CLOCK }
 
 data class LauncherSettings(
     val theme: ThemeMode = ThemeMode.BLACK,
@@ -126,4 +128,6 @@ data class LauncherSettings(
     val receiptEnabled: Boolean = true,
     val receiptMinute: Int = 22 * 60,
     val playerControl: PlayerControl = PlayerControl.DROP,
+    /** Lock screen › Charging. */
+    val lockCharging: ChargeAnim = ChargeAnim.FLOOD,
 )

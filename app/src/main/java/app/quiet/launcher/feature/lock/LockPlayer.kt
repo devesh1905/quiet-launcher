@@ -66,6 +66,17 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
     val resumed = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value.isAtLeast(Lifecycle.State.RESUMED)
     val breath = rememberBreath(ctx.animate && np.isPlaying && resumed)
 
+    // Charging: the orb's place and beat, and the cover's bounds, for the lock-scene animations.
+    val charge = app.quiet.launcher.feature.lock.charge.LocalCharge.current
+    val beating by rememberUpdatedState(np.isPlaying && !reduced && resumed)
+    if (charge != null) {
+        SideEffect {
+            charge.orbX = { orb.x }
+            charge.orbBeat = { if (beating) app.quiet.launcher.feature.lock.charge.orbBeatCurve(orb.time) else 0f }
+        }
+        DisposableEffect(charge) { onDispose { charge.orbCoords = null; charge.coverCoords = null } }
+    }
+
     Box(modifier.fillMaxSize().background(c.bg).onGloballyPositioned { root = it }) {
         AmbientField(
             palette = np.palette, artRect = artRect, modifier = Modifier.fillMaxSize(),
@@ -116,6 +127,7 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
                         alpha = (1f - 0.45f * dim) * (1f - 0.8f * away)
                     }
                     .onGloballyPositioned { coords ->
+                        charge?.coverCoords = coords
                         val r = root ?: return@onGloballyPositioned
                         val b = coords.boundsInRoot(); val rb = r.boundsInRoot()
                         artRect = Rect(b.left - rb.left, b.top - rb.top, b.right - rb.left, b.bottom - rb.top)
@@ -129,7 +141,8 @@ fun LockPlayerScene(ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository
                 // The seek line's touch band is 12 dp taller each side than the line it draws.
                 Spacer(Modifier.height(6.dp))
                 SeekLine(np, repo::seekTo, c.edgeOnField, 13.sp, Modifier.graphicsLayer { alpha = progAlpha })
-                if (useOrb) PlayerOrb(control, np, repo, orb, running = resumed) else TransportControls(np.isPlaying, repo, c.edgeOnField)
+                if (useOrb) PlayerOrb(control, np, repo, orb, running = resumed,
+                    modifier = if (charge != null) Modifier.onGloballyPositioned { charge.orbCoords = it } else Modifier) else TransportControls(np.isPlaying, repo, c.edgeOnField)
             }
             Spacer(Modifier.height(ctx.bottomReserve))
         }

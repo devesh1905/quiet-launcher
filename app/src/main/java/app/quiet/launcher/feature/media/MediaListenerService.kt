@@ -40,6 +40,7 @@ class MediaListenerService : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         if (sbn != null && isMedia(sbn.notification)) MediaNotificationArt.remove(sbn.packageName)
+        runCatching { NotificationFilter.get(applicationContext).onRemoved(sbn) }
     }
 
     private fun isMedia(n: Notification?): Boolean = n?.extras?.containsKey("android.mediaSession") == true

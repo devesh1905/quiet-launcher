@@ -87,7 +87,7 @@ fun UsageScreen(onBack: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
-            .background(c.bg)
+            .background(app.quiet.launcher.feature.underwater.overlayScreenBg())
             .windowInsetsPadding(WindowInsets.systemBars)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)

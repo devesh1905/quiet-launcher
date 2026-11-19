@@ -18,6 +18,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import app.quiet.launcher.container
+import app.quiet.launcher.feature.underwater.engine.Underwater
 import app.quiet.launcher.feature.lock.LockActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -119,6 +120,8 @@ class LockService : Service() {
         val container = context.applicationContext.container
         val s = container.settings.settings.value
         if (!s.lockEnabled) return
+        // The other Quiet edition is home: it shows its own lock screen.
+        if (!app.quiet.launcher.feature.underwater.engine.Underwater.ownsDevice(context)) return
         if (s.lockOnlyWithMusic && container.nowPlaying.state.value == null) return
         // Never cover a ringing or active call: the system's call screen must be on top.
         if (app.quiet.launcher.core.platform.CallState.isCallActive(context)) return
@@ -144,7 +147,9 @@ class LockService : Service() {
         fun startIfEnabled(context: Context) {
             val app = context.applicationContext
             val intent = Intent(app, LockService::class.java)
-            if (!app.container.settings.settings.value.lockEnabled) {
+            // Quiet Underwater only runs the lock screen while it is the home app (classic: always).
+            if (!app.container.settings.settings.value.lockEnabled ||
+                !Underwater.ownsDevice(app)) {
                 app.stopService(intent)
                 return
             }

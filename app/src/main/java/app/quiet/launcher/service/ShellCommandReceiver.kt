@@ -5,9 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import app.quiet.launcher.container
+import app.quiet.launcher.feature.underwater.engine.WaterDebug
 import app.quiet.launcher.feature.focus.FocusRuntime
 import app.quiet.launcher.feature.focus.engine.Behaviour
 import app.quiet.launcher.feature.focus.engine.Schedule
+import app.quiet.launcher.feature.notifications.NotificationBubbles
 import app.quiet.launcher.feature.notifications.NotificationFilter
 import kotlinx.coroutines.launch
 
@@ -45,6 +47,20 @@ class ShellCommandReceiver : BroadcastReceiver() {
                             }
                     }
                     "focus_import" -> focusImport(app, intent)
+                    // Quiet Underwater test knobs: --ei shader 0..3  --ez still true|false  --ez logfeel true|false
+                    "water" -> android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        val d = WaterDebug
+                        if (intent.hasExtra("shader")) d.shaderMode = intent.getIntExtra("shader", 0)
+                        if (intent.hasExtra("still")) d.forceStill = intent.getBooleanExtra("still", false)
+                        if (intent.hasExtra("logfeel")) d.logFeel = intent.getBooleanExtra("logfeel", false)
+                        Log.i("QuietWater", "debug shader=${d.shaderMode} still=${d.forceStill} logfeel=${d.logFeel}")
+                    }
+                    // Underwater edition test hook: a Home bubble with no real notification behind it.
+                    //   ... --es cmd bubble --es pkg com.whatsapp --es title "Asha" --es text "On my way"
+                    "bubble" -> NotificationBubbles.inject(
+                        app, intent.getStringExtra("pkg") ?: "com.android.shell",
+                        intent.getStringExtra("title").orEmpty(), intent.getStringExtra("text").orEmpty(),
+                    )
                     else -> Log.w("Quiet", "Unknown shell command")
                 }
             } catch (e: Exception) {

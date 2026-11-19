@@ -34,6 +34,7 @@ import app.quiet.launcher.core.model.NowPlaying
 import app.quiet.launcher.core.platform.Format
 import app.quiet.launcher.designsystem.*
 import app.quiet.launcher.designsystem.shader.AmbientField
+import app.quiet.launcher.feature.underwater.UnderwaterPlayerScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -106,6 +107,13 @@ fun SharedTransitionScope.PlayerScreen(
     ambientStrength: Float,
     onClose: () -> Unit,
 ) {
+    // Quiet Underwater: the cover floats on the water (feature/underwater/UnderwaterPlayer.kt).
+    val water = app.quiet.launcher.feature.underwater.engine.LocalWater.current
+    if (water != null) {
+        val r = PlayerTestHook.repoOr(androidx.compose.ui.platform.LocalContext.current, repo)
+        UnderwaterPlayerScreen(water, np, r, visibility, opening, ambientStrength, onClose)
+        return
+    }
     val c = Q.colors
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()

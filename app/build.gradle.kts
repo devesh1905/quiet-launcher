@@ -14,8 +14,22 @@ android {
         applicationId = "app.quiet.launcher"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.4.1"
+        versionCode = 8
+        versionName = "0.5.0"
+    }
+
+    // Two editions from one codebase: classic Quiet, and Quiet Underwater (water and glass), a separate app.
+    flavorDimensions += "edition"
+    productFlavors {
+        create("classic") {
+            dimension = "edition"
+            buildConfigField("boolean", "UNDERWATER", "false")
+        }
+        create("underwater") {
+            dimension = "edition"
+            applicationIdSuffix = ".underwater"
+            buildConfigField("boolean", "UNDERWATER", "true")
+        }
     }
 
     buildTypes {

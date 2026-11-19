@@ -393,7 +393,7 @@ internal fun DiscreteSlider(count: Int, index: Int, onIndex: (Int) -> Unit, modi
 @Composable
 internal fun FocusScreen(title: String, onBack: () -> Unit, subtitle: String? = null, content: LazyListScope.() -> Unit) {
     val c = Q.colors
-    Box(Modifier.fillMaxSize().background(c.bg)) {
+    Box(Modifier.fillMaxSize().background(app.quiet.launcher.feature.underwater.overlayScreenBg())) {
         LazyColumn(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars).imePadding(),
             contentPadding = PaddingValues(bottom = 48.dp),

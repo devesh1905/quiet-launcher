@@ -35,6 +35,7 @@ import app.quiet.launcher.feature.lock.LockActivity
 import app.quiet.launcher.feature.media.NowPlayingRepositoryImpl
 import app.quiet.launcher.feature.settings.SettingsScreen
 import app.quiet.launcher.feature.usage.UsageScreen
+import app.quiet.launcher.feature.underwater.engine.waterWorld
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 
@@ -53,7 +54,9 @@ class MainActivity : ComponentActivity() {
         handleDeepLink(intent)
         setContent {
             val settings by container.settings.settings.collectAsStateWithLifecycle()
-            val dark = when (settings.theme) {
+            // Quiet Underwater: the water look is always dark (classic: unchanged).
+            val underwater = BuildConfig.UNDERWATER && app.quiet.launcher.feature.underwater.engine.Underwater.active()
+            val dark = if (underwater) true else when (settings.theme) {
                 ThemeMode.BLACK -> true
                 ThemeMode.LIGHT -> false
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
@@ -135,13 +138,22 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
     }
     fun openFrom(o: Overlay, back: Overlay = Overlay.None) { overlayBack = back; overlay = o }
 
-    Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+    val waterOn = BuildConfig.UNDERWATER && app.quiet.launcher.feature.underwater.engine.Underwater.active()
+    // Underwater: the pages fade back under a frosted overlay pane (fully) or the app sheet (partly),
+    // so no list or Home text ghosts through the frost and collides with the words on the glass.
+    val pagesFade by androidx.compose.animation.core.animateFloatAsState(
+        if (!waterOn) 1f else if (overlay != Overlay.None) 0f else if (sheetApp != null) 0.4f else 1f,
+        tween(240), label = "pagesFade",
+    )
+    val pages: @Composable () -> Unit = {
         HorizontalPager(state = pager, beyondViewportPageCount = 1, modifier = Modifier.fillMaxSize(), userScrollEnabled = !playerOpen) { page ->
             // Pages slide with a gentle depth and fade so Home and the list feel layered.
             val offset = (pager.currentPage - page) + pager.currentPageOffsetFraction
             Box(Modifier.fillMaxSize().graphicsLayer {
                 val o = offset.absoluteValue.coerceIn(0f, 1f)
-                alpha = lerp(1f, 0.2f, o)
+                // Underwater: a page fully out of view draws nothing (alpha 0 is never a layer), so a
+                // neighbour that redraws every water frame (the apps slab) costs no offscreen pass.
+                alpha = (if (waterOn && o >= 0.999f) 0f else lerp(1f, 0.2f, o)) * pagesFade
                 val s = lerp(1f, 0.96f, o)
                 scaleX = s; scaleY = s
             }) {
@@ -173,6 +185,33 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
                 }
             }
         }
+    }
+
+    // Quiet Underwater: the pages are the world the water and glass bend (null = classic look).
+    val water = if (waterOn) app.quiet.launcher.feature.underwater.engine.rememberWaterHost() else null
+    CompositionLocalProvider(app.quiet.launcher.feature.underwater.engine.LocalWater provides water) {
+    Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+        if (water != null) {
+            val battery by ctx.container.device.battery.collectAsStateWithLifecycle()
+            val art by ctx.container.art.today.collectAsStateWithLifecycle()
+            val swatches = app.quiet.launcher.feature.lock.charge.rememberPaintingSwatches(art?.imagePath)
+            app.quiet.launcher.feature.underwater.engine.WaterEngine(
+                water, battery.level, battery.charging, swatches, app.quiet.launcher.designsystem.Q.reducedMotion,
+                visible = true, // overlays are frosted glass and the player floats on the water: it runs on under them
+            )
+            // Home is where the painting comes from in this edition (classic gets it from its lock screen).
+            LaunchedEffect(water) { runCatching { ctx.container.art.refreshIfStale() } }
+            LaunchedEffect(water) { snapshotFlow { pager.currentPage + pager.currentPageOffsetFraction }.collect { water.wake() } }
+            // Above the world (not bent or frosted by it): crisp cards over frosted glass, lifted labels.
+            val top = app.quiet.launcher.feature.underwater.rememberWaterTop()
+            CompositionLocalProvider(app.quiet.launcher.feature.underwater.LocalWaterTop provides top) {
+                Box(Modifier.fillMaxSize().waterWorld(water)) {
+                    app.quiet.launcher.feature.underwater.WaterBackdrop(art?.imagePath, swatches)
+                    pages()
+                }
+                app.quiet.launcher.feature.underwater.WaterTopLayer(top)
+            }
+        } else pages()
 
         AnimatedContent(
             targetState = overlay,
@@ -185,7 +224,7 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
         ) { o ->
             when (o) {
                 Overlay.None -> Box(Modifier)
-                Overlay.Settings -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+                Overlay.Settings -> app.quiet.launcher.feature.underwater.GlassPane(leaving = o != overlay && overlay != Overlay.None) {
                     SettingsScreen(
                         onBack = { overlay = Overlay.None },
                         onOpenLockPicker = { LockActivity.openPicker(ctx) },
@@ -198,7 +237,7 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
                         onOpenFocusSession = { openFrom(Overlay.FocusSession, Overlay.Settings) },
                     )
                 }
-                Overlay.Focus -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+                Overlay.Focus -> app.quiet.launcher.feature.underwater.GlassPane(leaving = o != overlay && overlay != Overlay.None) {
                     app.quiet.launcher.feature.focus.settings.FocusSettingsScreen(
                         onBack = { overlay = Overlay.Settings },
                         onOpenSchedules = { openFrom(Overlay.Schedules, Overlay.Settings) },
@@ -206,25 +245,25 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
                         onOpenFocusSession = { openFrom(Overlay.FocusSession, Overlay.Settings) },
                     )
                 }
-                Overlay.Schedules -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+                Overlay.Schedules -> app.quiet.launcher.feature.underwater.GlassPane(leaving = o != overlay && overlay != Overlay.None) {
                     app.quiet.launcher.feature.focus.settings.SchedulesScreen(onBack = { overlay = if (overlayBack == Overlay.None) Overlay.None else Overlay.Settings; overlayBack = Overlay.Settings })
                 }
-                Overlay.FocusSession -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+                Overlay.FocusSession -> app.quiet.launcher.feature.underwater.GlassPane(leaving = o != overlay && overlay != Overlay.None) {
                     app.quiet.launcher.feature.focus.settings.FocusSessionStart(onBack = { overlay = if (overlayBack == Overlay.None) Overlay.None else Overlay.Settings; overlayBack = Overlay.Settings }, onStarted = { overlay = Overlay.None; overlayBack = Overlay.Settings })
                 }
-                Overlay.BlockApp -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+                Overlay.BlockApp -> app.quiet.launcher.feature.underwater.GlassPane(leaving = o != overlay && overlay != Overlay.None) {
                     blockPkg?.let { p -> app.quiet.launcher.feature.focus.settings.BlockAppScreen(p, onBack = { overlay = overlayBack }) }
                 }
-                Overlay.Notifications -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+                Overlay.Notifications -> app.quiet.launcher.feature.underwater.GlassPane(leaving = o != overlay && overlay != Overlay.None) {
                     app.quiet.launcher.feature.notifications.NotificationFilterScreen(onBack = { overlay = Overlay.Settings })
                 }
-                Overlay.Monochrome -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+                Overlay.Monochrome -> app.quiet.launcher.feature.underwater.GlassPane(leaving = o != overlay && overlay != Overlay.None) {
                     app.quiet.launcher.feature.monochrome.MonochromeScreen(onBack = { overlay = Overlay.Settings })
                 }
-                Overlay.Hidden -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+                Overlay.Hidden -> app.quiet.launcher.feature.underwater.GlassPane(leaving = o != overlay && overlay != Overlay.None) {
                     app.quiet.launcher.feature.hidden.HiddenAppsScreen(onBack = { overlay = Overlay.Settings })
                 }
-                Overlay.Usage -> Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+                Overlay.Usage -> app.quiet.launcher.feature.underwater.GlassPane(leaving = o != overlay && overlay != Overlay.None) {
                     UsageScreen(onBack = { overlay = Overlay.None })
                 }
             }
@@ -232,6 +271,9 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
 
         AppActionsSheet(app = sheetApp, onDismiss = { sheetApp = null }, onBlock = { p -> blockPkg = p; overlayBack = Overlay.None; overlay = Overlay.BlockApp })
         // Keeps the system lock-screen wallpaper in step with the chosen lock style.
-        app.quiet.launcher.feature.lock.LockWallpaperSync()
+        // Quiet Underwater sits beside classic Quiet: it only owns the lock wallpaper while it is the home app.
+        if (!BuildConfig.UNDERWATER || remember { app.quiet.launcher.core.platform.Permissions.isDefaultLauncher(ctx) })
+            app.quiet.launcher.feature.lock.LockWallpaperSync()
+    }
     }
 }

@@ -117,6 +117,8 @@ object ReceiptScheduler {
 
 class ReceiptAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        // Quiet Underwater beside classic Quiet: no receipt unless it is the home app.
+        if (!app.quiet.launcher.feature.underwater.engine.Underwater.ownsDevice(context)) return
         ReceiptScheduler.onAlarm(context.applicationContext)
     }
 }

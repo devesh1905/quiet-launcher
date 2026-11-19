@@ -93,7 +93,7 @@ fun MonochromeScreen(onBack: () -> Unit) {
             .filter { (q.isEmpty() || it.second.contains(q, ignoreCase = true)) && preset.matches(cats[it.first]) }
     }
 
-    Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+    Box(Modifier.fillMaxSize().background(app.quiet.launcher.feature.underwater.overlayScreenBg())) {
         LazyColumn(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars),
             contentPadding = PaddingValues(bottom = 48.dp),

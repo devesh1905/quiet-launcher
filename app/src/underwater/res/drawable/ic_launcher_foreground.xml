@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quiet Underwater: the same hairline gallery frame, holding a water drop over a calm waterline. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- frame -->
+    <path android:strokeColor="#EDEBE6" android:strokeWidth="1.6"
+        android:pathData="M35,35 L73,35 L73,73 L35,73 Z" />
+    <!-- the drop -->
+    <path android:fillColor="#8FC9D9"
+        android:pathData="M54,40 C54,40 46.5,49.5 46.5,54.5 A7.5,7.5 0 0 0 61.5,54.5 C61.5,49.5 54,40 54,40 Z" />
+    <!-- its highlight -->
+    <path android:strokeColor="#EDEBE6" android:strokeWidth="1.1" android:strokeLineCap="round"
+        android:strokeAlpha="0.8" android:pathData="M50.6,54.2 A3.6,3.6 0 0 0 52.6,57.6" />
+    <!-- waterline -->
+    <path android:strokeColor="#EDEBE6" android:strokeWidth="1.2" android:strokeLineCap="round"
+        android:pathData="M40,66 L68,66" />
+    <!-- ripples -->
+    <path android:strokeColor="#8FC9D9" android:strokeWidth="1.2" android:strokeLineCap="round"
+        android:strokeAlpha="0.7" android:pathData="M46,69.5 L62,69.5" />
+</vector>

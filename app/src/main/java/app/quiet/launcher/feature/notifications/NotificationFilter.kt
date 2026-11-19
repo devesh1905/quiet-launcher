@@ -119,6 +119,7 @@ class NotificationFilter private constructor(context: Context) {
 
     fun onConnected(service: NotificationListenerService) {
         listener = service
+        NotificationBubbles.attach(service)
         schedulePrune(ctx)
         scope.launch {
             prune()
@@ -126,10 +127,17 @@ class NotificationFilter private constructor(context: Context) {
         }
     }
 
-    fun onDisconnected() { listener = null }
+    fun onDisconnected() { listener = null; NotificationBubbles.attach(null) }
+
+    /** A notification left the shade: its Home bubble (underwater edition) goes too. */
+    fun onRemoved(sbn: StatusBarNotification?) {
+        if (sbn != null) NotificationBubbles.onRemoved(sbn.key)
+    }
 
     fun onPosted(sbn: StatusBarNotification?, service: NotificationListenerService) {
         if (sbn == null) return
+        // Underwater edition only (a no-op in classic): new notifications rise as bubbles on Home.
+        runCatching { NotificationBubbles.attach(service); NotificationBubbles.onPosted(ctx, sbn) }
         val c = candidate(sbn) ?: return
         scope.launch { process(c, service) }
     }

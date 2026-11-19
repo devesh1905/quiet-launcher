@@ -20,6 +20,12 @@ class QuietApp : Application() {
         // A crash or reboot while the lock screen was up must not leave a 10 s timeout behind.
         if (!getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) app.quiet.launcher.feature.lock.LockTimeout.restore(this)
         container = AppContainer(this)
+        // Quiet Underwater sits beside classic Quiet: no background device work unless it is the home app.
+        if (!app.quiet.launcher.feature.underwater.engine.Underwater.ownsDevice(this)) {
+            androidx.work.WorkManager.getInstance(this).cancelUniqueWork(app.quiet.launcher.feature.art.ArtScheduler.UNIQUE_NAME)
+            app.quiet.launcher.service.LockService.startIfEnabled(this) // stops it if it was running
+            return
+        }
         app.quiet.launcher.feature.art.ArtScheduler.schedule(this)
         app.quiet.launcher.service.LockService.startIfEnabled(this)
         app.quiet.launcher.feature.monochrome.MonochromeController.get(this).start()

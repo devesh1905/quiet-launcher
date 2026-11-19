@@ -28,6 +28,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.quiet.launcher.container
 import app.quiet.launcher.core.model.AppEntry
 import app.quiet.launcher.designsystem.*
+import app.quiet.launcher.feature.underwater.engine.GlassStyle
+import app.quiet.launcher.feature.underwater.engine.LocalWater
+import app.quiet.launcher.feature.underwater.engine.WaterHost
+import app.quiet.launcher.feature.underwater.engine.rememberGlass
+import app.quiet.launcher.feature.underwater.rigidGlass
+import app.quiet.launcher.feature.underwater.smooth
+import androidx.compose.ui.graphics.drawOutline
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -57,12 +64,15 @@ fun QuietSheet(visible: Boolean, onDismiss: () -> Unit, content: @Composable Col
     if (!shown) return
     BackHandler(onBack = onDismiss)
     val progress = (1f - offset.value / heightPx).coerceIn(0f, 1f)
+    // Quiet Underwater: a slab of frosted glass sliding over the water (null = classic, unchanged).
+    val water = LocalWater.current
+    val glassId = if (water != null) rememberGlass(water, SheetGlass) else -1
 
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier.fillMaxSize()
                 .graphicsLayer { alpha = progress }
-                .background(c.scrim)
+                .background(if (water != null) UnderwaterScrim else c.scrim)
                 .pointerInput(Unit) { detectTapGestures { onDismiss() } }
         )
         Column(
@@ -71,7 +81,10 @@ fun QuietSheet(visible: Boolean, onDismiss: () -> Unit, content: @Composable Col
                 .fillMaxWidth()
                 .onSizeChanged { heightPx = it.height.toFloat().coerceAtLeast(1f) }
                 .offset { IntOffset(0, offset.value.roundToInt()) }
-                .background(c.raised, RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
+                .then(
+                    if (water != null && glassId >= 0) Modifier.frostedSheet(water, glassId, c.raised)
+                    else Modifier.background(c.raised, RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
+                )
                 .drawBehind { drawLine(c.line, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx()) }
                 .pointerInput(Unit) {
                     val tracker = VelocityTracker()
@@ -99,6 +112,32 @@ fun QuietSheet(visible: Boolean, onDismiss: () -> Unit, content: @Composable Col
         }
     }
 }
+
+// ---- Quiet Underwater: the frosted sheet
+
+/** The sheet's glass: a frosted slab, its top edge a soft glass rim (the rest runs on under the screen). */
+private val SheetGlass = GlassStyle(corner = 26.dp, bevel = 14.dp, frost = 1f)
+/** Lighter than the classic scrim, so the water and painting stay in view around the sheet. */
+private val UnderwaterScrim = androidx.compose.ui.graphics.Color(0x73000000)
+/**
+ * The sheet's own tint over the frost once the glass is in. With the scrim under it, the frosted
+ * world shows at <= 23 % of its brightness: ink >= 13:1, muted >= 5:1 (WCAG AA).
+ */
+private const val SHEET_TINT = 0.8f
+private val SheetShape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
+
+/**
+ * The sheet's bounds become frosted glass (tracked exactly, so it slides and drags with the sheet),
+ * and its fill turns translucent as the frost condenses: opaque until the glass is in, never sharp
+ * water behind the type.
+ */
+private fun Modifier.frostedSheet(host: WaterHost, id: Int, fill: androidx.compose.ui.graphics.Color): Modifier =
+    rigidGlass(host, id, extendBottom = 64f * host.dp)
+        .drawBehind {
+            host.tick
+            val a = smooth(host.glassAlphaNow(id))
+            drawOutline(SheetShape.createOutline(size, layoutDirection, this), fill.copy(alpha = 1f - (1f - SHEET_TINT) * a))
+        }
 
 @Composable
 fun SheetAction(text: String, onClick: () -> Unit) {

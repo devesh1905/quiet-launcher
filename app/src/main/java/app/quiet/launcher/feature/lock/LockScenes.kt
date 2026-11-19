@@ -33,6 +33,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
 import app.quiet.launcher.designsystem.shader.AmbientField
+import app.quiet.launcher.feature.lock.charge.chargeClock
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -90,13 +91,28 @@ fun LockClock(ctx: LockContext, modifier: Modifier = Modifier, scale: Float = 1f
     val c = Q.colors
     val ink = tint ?: c.ink
     if (ctx.wallpaper) { Spacer(modifier.height(WallpaperClockSpace)); return }
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+    // Charging: Clock fill turns the time into glass filling with light; Light thread hangs under this block.
+    val charge = app.quiet.launcher.feature.lock.charge.LocalCharge.current
+    val fontPx = with(LocalDensity.current) { (ctx.face.clockSp * scale).sp.toPx() }
+    Column(
+        modifier.then(if (charge != null) Modifier.onGloballyPositioned { charge.clockBlock = it } else Modifier),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         BasicText(
             Format.clock(ctx.minute, ctx.is24h),
             style = TextStyle(
                 fontFamily = ctx.face.display, fontSize = (ctx.face.clockSp * scale).sp, color = ink,
                 fontFeatureSettings = "lnum, tnum", letterSpacing = (-0.01).em,
             ),
+            modifier = Modifier.chargeClock(charge),
+            onTextLayout = { r ->
+                if (charge != null) {
+                    charge.clockBaseline = r.firstBaseline
+                    charge.clockW = r.size.width.toFloat()
+                    charge.clockH = r.size.height.toFloat()
+                    charge.clockCap = fontPx * 0.70f
+                }
+            },
         )
         BasicText(
             Format.longDate(ctx.minute),
@@ -455,7 +471,7 @@ fun FavouriteHeart(pulse: Int, modifier: Modifier = Modifier) {
 }
 
 /** The last painting's swatches, so coming back to the lock screen does not run Palette again. */
-private object PaintingPaletteCache {
+internal object PaintingPaletteCache {
     private var path: String? = null
     private var swatches: IntArray? = null
     @Synchronized fun get(p: String?): IntArray? = if (p != null && p == path) swatches else null

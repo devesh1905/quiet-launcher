@@ -15,6 +15,8 @@ import java.util.concurrent.TimeUnit
 
 class DailyArtWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
+        // Quiet Underwater beside classic Quiet: no daily job unless it is the home app (it refreshes on open).
+        if (!app.quiet.launcher.feature.underwater.engine.Underwater.ownsDevice(applicationContext)) return Result.success()
         try {
             applicationContext.container.art.refreshIfStale()
         } catch (e: kotlinx.coroutines.CancellationException) {

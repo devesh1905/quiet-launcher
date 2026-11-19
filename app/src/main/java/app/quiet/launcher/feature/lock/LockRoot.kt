@@ -23,9 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import app.quiet.launcher.feature.lock.charge.chargeScene
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -78,6 +81,7 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
     val density = LocalDensity.current
     val reduced = Q.reducedMotion
     var size by remember { mutableStateOf(IntSize(1, 1)) }
+    val musicHiddenTrackHolder = androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         container.usage.refresh()
@@ -93,6 +97,28 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
         val sp = readSensorSpot(size.width, size.height)
         with(density) { ((size.height - (sp.cy - sp.radius)).coerceAtLeast(0f)).toDp() } + 16.dp
     }
+    // ---------- charging ----------
+    val charge = remember { app.quiet.launcher.feature.lock.charge.ChargeHost() }
+    val two = remember { ShowOffGesture() }
+    val holdHaptic = app.quiet.launcher.designsystem.rememberHaptics()
+    val showingMusic = np != null && settings.lockShowMusic && np?.track?.id?.substringBefore('|') != musicHiddenTrackHolder.value
+    val paintingSwatches = app.quiet.launcher.feature.lock.charge.rememberPaintingSwatches(art?.imagePath)
+    val ringSpot = remember(size) { readSensorSpot(size.width, size.height) }
+    val ringTop = ringSpot.cy - ringSpot.radius
+    // ---------- Water (Quiet Underwater): a theme of its own, placed before the painting in the gallery.
+    // Its charging animation is the water itself, so the charging host stays off under it.
+    val waterAvailable = app.quiet.launcher.feature.lock.water.lockWaterAvailable()
+    val waterOn = app.quiet.launcher.feature.lock.water.lockWaterChosen()
+    val water = remember { app.quiet.launcher.feature.lock.water.WaterLockControl() }
+    val waterNow by rememberUpdatedState(waterOn)   // read inside the long-lived gesture loops
+    app.quiet.launcher.feature.lock.charge.ChargeEngine(
+        charge, if (waterOn) app.quiet.launcher.core.model.ChargeAnim.OFF else settings.lockCharging, reduced,
+        playing = showingMusic && np?.isPlaying == true,
+        palette = if (showingMusic) np?.palette else paintingSwatches,
+        ringTop = if (size.height > 1) ringTop else 0f,
+        ringR = ringSpot.radius,
+    )
+
     val lockCtx = LockContext(
         face = lockFace(settings.lockFont), minute = minute, is24h = DateFormat.is24HourFormat(ctx),
         usageMs = usage.totalMs, oneThing = settings.oneThingToday, art = art,
@@ -117,7 +143,7 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
     LaunchedEffect(unlockSignal) { if (unlockSignal > 0) finishUnlock(-2500f) }
 
     // ---------- music on the lock screen ----------
-    var musicHiddenTrack by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    var musicHiddenTrack by musicHiddenTrackHolder
     var musicMenu by remember { mutableStateOf(false) }
     var artPressHandled by remember { mutableStateOf(false) }
     var paintingMenu by remember { mutableStateOf(false) }
@@ -125,20 +151,27 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
     // ---------- picker ----------
     var picking by remember { mutableStateOf(startInPicker) }
     val pick = remember { Animatable(if (startInPicker) 1f else 0f) }
-    val styles = LockStyle.entries
-    val pager = rememberPagerState(initialPage = styles.indexOf(settings.lockStyle).coerceAtLeast(0)) { styles.size }
+    // The gallery's pages; null is Water (underwater edition only, right before the painting).
+    val styles: List<LockStyle?> = if (waterAvailable) listOf(null) + LockStyle.entries else LockStyle.entries
+    val currentStyle: LockStyle? = if (waterOn) null else settings.lockStyle
+    val pager = rememberPagerState(initialPage = styles.indexOf(currentStyle).coerceAtLeast(0)) { styles.size }
     fun openPicker() {
         // The artwork has its own long-press menu; it fires first in the same gesture.
         if (artPressHandled) { artPressHandled = false; return }
         if (picking) return
         haptic.play(Feel.Heavy)
-        scope.launch { pager.scrollToPage(styles.indexOf(settings.lockStyle).coerceAtLeast(0)) }
+        scope.launch { pager.scrollToPage(styles.indexOf(currentStyle).coerceAtLeast(0)) }
         picking = true
         scope.launch { pick.animateTo(1f, if (reduced) tween(0) else QMotion.Open) }
     }
     fun closePicker(apply: Boolean) {
         scope.launch {
-            if (apply) container.settings.update { it.copy(lockStyle = styles[pager.currentPage]) }
+            if (apply) {
+                val s = styles[pager.currentPage]
+                // Water keeps the painting as its lock style: that is what shows wherever the water cannot.
+                if (waterAvailable) app.quiet.launcher.feature.lock.water.LockWaterPrefs.get(ctx).setOn(s == null)
+                container.settings.update { it.copy(lockStyle = s ?: LockStyle.MASTERPIECE) }
+            }
             pick.animateTo(0f, if (reduced) tween(0) else QMotion.Close)
             picking = false
             if (startInPicker) onPickerDone()
@@ -159,15 +192,28 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
 
     // The live scene for a style; music wins over the chosen style when not picking.
     @Composable
-    fun Scene(style: LockStyle, animate: Boolean, allowMusic: Boolean) {
+    fun Scene(style: LockStyle?, animate: Boolean, allowMusic: Boolean) {
         val lc = lockCtx.copy(animate = animate && !reduced)
         val playing = np
-        if (allowMusic && playing != null && settings.lockShowMusic && playing.track.id.substringBefore('|') != musicHiddenTrack) {
+        val musicHere = allowMusic && playing != null && settings.lockShowMusic && playing.track.id.substringBefore('|') != musicHiddenTrack
+        // Water: the painting under water; music floats on it. No notifications here. Can't run: the painting.
+        if (style == null) {
+            if (waterAvailable) {
+                app.quiet.launcher.feature.lock.water.WaterLockScene(
+                    lc, control = if (allowMusic) water else null,
+                    np = if (musicHere) playing else null, repo = container.nowPlaying,
+                    onArtLongPress = if (animate) ({ artPressHandled = true; paintingMenu = true }) else null,
+                    onMusicLongPress = { artPressHandled = true; musicMenu = true },
+                )
+                return
+            }
+        }
+        if (musicHere && playing != null) {
             LockPlayerScene(lc, playing, container.nowPlaying, settings.ambientStrength, control = settings.playerControl,
                 onArtLongPress = { artPressHandled = true; musicMenu = true })
             return
         }
-        when (style) {
+        when (style ?: LockStyle.MASTERPIECE) {
             LockStyle.MASTERPIECE -> MasterpieceScene(lc, onArtLongPress = if (animate) ({ artPressHandled = true; paintingMenu = true }) else null, heart = if (allowMusic) heartPulse else 0)
             LockStyle.CANVAS -> QuietCanvasScene(lc)
             LockStyle.SKY -> SkyScene(lc)
@@ -185,8 +231,36 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
-                        awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                        val e = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
                         touchTick++
+                        // Show-off Flood: hold two fingers still for ~0.7 s. While it shows, a double tap drains it.
+                        if (!picking) {
+                            val down = e.changes.count { it.pressed }
+                            if (down >= 2 && !two.held) {
+                                two.held = true
+                                two.moved = 0f
+                                two.job?.cancel()
+                                two.job = scope.launch {
+                                    kotlinx.coroutines.delay(700)
+                                    android.util.Log.d("QuietCharge", "hold held=${two.held} moved=${two.moved}")
+                                    // Under Water the show-off is the water's own plug-in moment.
+                                    if (two.held && two.moved < 40f * density.density && (if (waterNow) water.showOff() else charge.startDemo())) holdHaptic.play(app.quiet.launcher.designsystem.Feel.Heavy)
+                                }
+                            }
+                            if (two.held) e.changes.forEach { two.moved += (it.position - it.previousPosition).getDistance() }
+                            // Two fingers belong to the show-off: consume them here (Initial pass) so the theme
+                            // picker's and the artwork's long-presses, taps and the unlock swipe all cancel.
+                            if (down >= 2 || two.sawTwo) { two.sawTwo = down > 0; e.changes.forEach { it.consume() } }
+                            if (down < 2) { two.held = false; two.job?.cancel() }
+                            if (charge.demo && down == 0 && e.changes.any { it.changedToUp() }) {
+                                val t = android.os.SystemClock.uptimeMillis()
+                                if (t - two.lastTapUp < 320L) { charge.endDemo(); two.lastTapUp = 0L } else two.lastTapUp = t
+                            }
+                        }
+                        // Flood: fingers stir the water. Read only, never consumed, so every gesture still works.
+                        if (!picking && charge.shown == app.quiet.launcher.core.model.ChargeAnim.FLOOD) e.changes.forEach { ch ->
+                            if (ch.pressed) charge.touch(ch.position.x, ch.position.y - lift.value, ch.position.x - ch.previousPosition.x, ch.position.y - ch.previousPosition.y)
+                        }
                     }
                 }
             }
@@ -214,8 +288,11 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
                                 tracker.addPosition(ch.uptimeMillis, ch.position)
                                 val raw = lift.value + dy
                                 scope.launch { lift.snapTo(if (raw > 0) QMotion.rubberBand(raw, h * 0.12f) else raw) }
+                                // Water: the meniscus is drawn up after the finger; a soft Rise past the threshold.
+                                if (waterNow) water.unlockDrag(raw, h, ch.position.x, dy)
                             },
                             onDragEnd = {
+                                if (waterNow) water.unlockEnd()
                                 val v = tracker.calculateVelocity().y
                                 val landing = lift.value + QMotion.project(v)
                                 if (landing < -h * 0.2f || lift.value < -h * 0.15f || v < -700f) finishUnlock(minOf(v, -1200f))
@@ -225,7 +302,16 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
                         )
                     }
             ) {
-                Scene(settings.lockStyle, animate = true, allowMusic = true)
+                androidx.compose.runtime.CompositionLocalProvider(app.quiet.launcher.feature.lock.charge.LocalCharge provides charge) {
+                    Box(
+                        Modifier.fillMaxSize()
+                            .onGloballyPositioned { charge.root = it }
+                            .chargeScene(charge)
+                    ) {
+                        Scene(currentStyle, animate = true, allowMusic = true)
+                    }
+                }
+                app.quiet.launcher.feature.lock.charge.ChargeOverlay(charge)
             }
             // Fingerprint ring drawn exactly over the in-display sensor; a hint just above it.
             val spot = remember(size) { readSensorSpot(size.width, size.height) }
@@ -237,13 +323,29 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
                     .fillMaxWidth()
                     .graphicsLayer { alpha = fadeOut; translationY = lift.value * 0.3f },
             )
+            // The charging glass drop sits on the sensor in place of the ring; the ring keeps its touch handling.
+            val glassOnRing = androidx.compose.animation.core.animateFloatAsState(
+                if (charge.shown == app.quiet.launcher.core.model.ChargeAnim.GLASS && !showingMusic && !unlocking) 1f else 0f,
+                label = "glassOnRing",
+            ).value
+            // Water: the ring becomes a small glass drop on the sensor (drawn in the water); the ring keeps the touch.
+            LaunchedEffect(unlocking, waterOn) { if (unlocking && waterOn) water.unlocked() }
             FingerprintRing(
                 diameter = ringDp,
                 success = unlocking,
                 onHold = { finishUnlock(-1600f) },
                 modifier = Modifier
                     .offset { androidx.compose.ui.unit.IntOffset((spot.cx - spot.radius).toInt(), (spot.cy - spot.radius).toInt()) }
-                    .graphicsLayer { alpha = if (unlocking) 1f else fadeOut },
+                    .then(if (waterOn) Modifier.pointerInput(Unit) {
+                        // Read only (Initial pass, never consumed): the drop squeezes and rings under the finger.
+                        awaitPointerEventScope {
+                            while (true) {
+                                val e = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                water.sensorPress(e.changes.any { it.pressed })
+                            }
+                        }
+                    } else Modifier)
+                    .graphicsLayer { alpha = if (waterOn) 0f else (if (unlocking) 1f else fadeOut) * (1f - glassOnRing) },
             )
         } else {
             // ---------- the gallery of lock screens ----------
@@ -270,7 +372,7 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
                     beyondViewportPageCount = 0,
                 ) { page ->
                     val style = styles[page]
-                    val selected = settings.lockStyle == style
+                    val selected = currentStyle == style
                     Box(
                         Modifier
                             .fillMaxSize()
@@ -292,7 +394,7 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
                     verticalArrangement = Arrangement.Center,
                 ) {
                     BasicText(
-                        styles[pager.currentPage].title,
+                        styles[pager.currentPage]?.title ?: "Water",
                         style = TextStyle(fontFamily = lockCtx.face.label, fontStyle = if (lockCtx.face.labelItalic) FontStyle.Italic else FontStyle.Normal, fontSize = 24.sp, color = c.ink),
                     )
                     Spacer(Modifier.height(14.dp))
@@ -319,7 +421,7 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
                             contentAlignment = Alignment.Center,
                         ) { BasicText("Done", style = QType.body(16.sp).copy(color = c.onInk)) }
                     }
-                    if (styles[pager.currentPage] == LockStyle.MASTERPIECE) {
+                    if (styles[pager.currentPage].let { it == LockStyle.MASTERPIECE || it == null }) {
                         Spacer(Modifier.height(10.dp))
                         Box(Modifier.height(44.dp).pressable { scope.launch { container.art.skip() } }, contentAlignment = Alignment.Center) {
                             BasicText("Show another painting", style = QType.secondary(14.sp).copy(color = c.muted))
@@ -386,4 +488,14 @@ private fun UnlockHint(modifier: Modifier) {
         Spacer(Modifier.height(10.dp))
         BasicText("Swipe up, or rest your finger", style = QType.secondary(13.sp).copy(color = c.muted))
     }
+}
+
+/** State of the two-finger "show off Flood" hold on the lock screen. */
+private class ShowOffGesture {
+    var held = false
+    var moved = 0f
+    var job: kotlinx.coroutines.Job? = null
+    var lastTapUp = 0L
+    /** Two fingers were down in this gesture; stays set until every finger lifts. */
+    var sawTwo = false
 }
