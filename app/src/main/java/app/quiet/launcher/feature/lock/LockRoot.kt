@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.currentStateAsState
+import app.quiet.launcher.core.platform.ChargeRate
 import app.quiet.launcher.container
 import app.quiet.launcher.core.model.LockFont
 import app.quiet.launcher.core.model.LockStyle
@@ -105,25 +107,52 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
     val paintingSwatches = app.quiet.launcher.feature.lock.charge.rememberPaintingSwatches(art?.imagePath)
     val ringSpot = remember(size) { readSensorSpot(size.width, size.height) }
     val ringTop = ringSpot.cy - ringSpot.radius
+    // How fast it charges (one meter for the words under the clock and the animations' pace); it only
+    // samples while the lock screen is in front and plugged in.
+    val battery by container.device.battery.collectAsStateWithLifecycle()
+    val inFront = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateAsState().value
+        .isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+    val metered by app.quiet.launcher.core.platform.rememberChargeTier(battery.charging && inFront, battery.level)
+    // The last measured tier carries over a screen off / on, so the words don't reopen on every wake.
+    val heldTier = remember { arrayOf(ChargeRate.Tier.NORMAL) }
+    if (!battery.charging) heldTier[0] = ChargeRate.Tier.NORMAL
+    else if (metered != ChargeRate.Tier.NONE) heldTier[0] = metered
+    val chargeTier = when {
+        !battery.charging -> ChargeRate.Tier.NONE
+        LockDebug.rate >= 0 -> ChargeRate.Tier.entries.getOrNull(LockDebug.rate + 1) ?: heldTier[0]
+        else -> heldTier[0]
+    }
     // ---------- Water (Quiet Underwater): a theme of its own, placed before the painting in the gallery.
     // Its charging animation is the water itself, so the charging host stays off under it.
     val waterAvailable = app.quiet.launcher.feature.lock.water.lockWaterAvailable()
-    val waterOn = app.quiet.launcher.feature.lock.water.lockWaterChosen()
+    val waterChosen = app.quiet.launcher.feature.lock.water.lockWaterChosen()
+    val waterOn = waterAvailable && (LockDebug.water ?: waterChosen)
     val water = remember { app.quiet.launcher.feature.lock.water.WaterLockControl() }
     val waterNow by rememberUpdatedState(waterOn)   // read inside the long-lived gesture loops
     app.quiet.launcher.feature.lock.charge.ChargeEngine(
-        charge, if (waterOn) app.quiet.launcher.core.model.ChargeAnim.OFF else settings.lockCharging, reduced,
+        charge, if (waterOn) app.quiet.launcher.core.model.ChargeAnim.OFF else LockDebug.chargeStyle ?: settings.lockCharging, reduced,
         playing = showingMusic && np?.isPlaying == true,
         palette = if (showingMusic) np?.palette else paintingSwatches,
         ringTop = if (size.height > 1) ringTop else 0f,
         ringR = ringSpot.radius,
+        tier = chargeTier,
     )
+
+    LaunchedEffect(waterOn) { if (waterOn) charge.cancelDemo() }
+    // The two-finger hold: under Water the water's own plug-in moment, otherwise the Flood show-off.
+    fun showOff(): Boolean = if (waterNow) water.showOff() else charge.startDemo()
+    DisposableEffect(Unit) {
+        val f = { showOff() }
+        LockDebug.showOff = f
+        onDispose { if (LockDebug.showOff === f) LockDebug.showOff = null }
+    }
 
     val lockCtx = LockContext(
         face = lockFace(settings.lockFont), minute = minute, is24h = DateFormat.is24HourFormat(ctx),
         usageMs = usage.totalMs, oneThing = settings.oneThingToday, art = art,
         lat = settings.latitude, lon = settings.longitude, city = settings.cityName, animate = !reduced,
         bottomReserve = if (size.height > 1) sensorReserve else LockBottomReserve,
+        charge = chargeTier, chargeLevel = battery.level,
     )
 
     // ---------- unlock drag ----------
@@ -182,8 +211,8 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
     // Like the system lock screen: the screen goes off after 10 s without a touch.
     // Paused while a menu or the style picker is open, or while unlocking.
     var touchTick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(touchTick, picking, musicMenu, paintingMenu, unlocking, startInPicker) {
-        if (picking || musicMenu || paintingMenu || unlocking || startInPicker) return@LaunchedEffect
+    LaunchedEffect(touchTick, picking, musicMenu, paintingMenu, unlocking, startInPicker, LockDebug.stay) {
+        if (picking || musicMenu || paintingMenu || unlocking || startInPicker || LockDebug.stay) return@LaunchedEffect
         delay(10_000)
         onIdle()
     }
@@ -242,9 +271,7 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
                                 two.job?.cancel()
                                 two.job = scope.launch {
                                     kotlinx.coroutines.delay(700)
-                                    android.util.Log.d("QuietCharge", "hold held=${two.held} moved=${two.moved}")
-                                    // Under Water the show-off is the water's own plug-in moment.
-                                    if (two.held && two.moved < 40f * density.density && (if (waterNow) water.showOff() else charge.startDemo())) holdHaptic.play(app.quiet.launcher.designsystem.Feel.Heavy)
+                                    if (two.held && two.moved < 40f * density.density && showOff()) holdHaptic.play(app.quiet.launcher.designsystem.Feel.Heavy)
                                 }
                             }
                             if (two.held) e.changes.forEach { two.moved += (it.position - it.previousPosition).getDistance() }
@@ -317,7 +344,7 @@ fun LockRoot(startInPicker: Boolean, unlockSignal: Int, onUnlock: () -> Unit, on
             val spot = remember(size) { readSensorSpot(size.width, size.height) }
             val ringDp = with(density) { (spot.radius * 2f).toDp() }
             val fadeOut = (1f - progress * 1.6f).coerceIn(0f, 1f)
-            if (np == null) UnlockHint(
+            if (!showingMusic) UnlockHint(
                 Modifier
                     .offset { androidx.compose.ui.unit.IntOffset(0, (spot.cy - spot.radius - 64.dp.toPx()).toInt()) }
                     .fillMaxWidth()

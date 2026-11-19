@@ -142,6 +142,12 @@ internal class DockState(val host: WaterHost, val scope: CoroutineScope, val fol
     /** The dock slab's top and bottom (world px; -1 until laid out). */
     var slabTop by mutableFloatStateOf(-1f)
     var slabBottom = 0f
+    /** Height (px) the resting notification bubbles need above the slab (their row and clearance); 0 with none. */
+    var shelf by mutableFloatStateOf(0f)
+    /** Width (px) the resting bubbles need along the slab top, from its left edge. */
+    var shelfWidth by mutableFloatStateOf(0f)
+    /** World x the resting bubbles stay left of (the battery label shares their row); NaN: the whole dock. */
+    var shelfRight by mutableFloatStateOf(Float.NaN)
     /** A notification card is open (Home dims under it, like under an open folder). */
     var cardOpen by mutableStateOf(false)
     /** 0..1: Home's text and the dock fade, and a scrim darkens the world, while a card is up. */

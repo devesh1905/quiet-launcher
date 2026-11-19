@@ -6,6 +6,7 @@ import android.content.Intent
 import android.util.Log
 import app.quiet.launcher.container
 import app.quiet.launcher.feature.underwater.engine.WaterDebug
+import app.quiet.launcher.feature.lock.LockDebug
 import app.quiet.launcher.feature.focus.FocusRuntime
 import app.quiet.launcher.feature.focus.engine.Behaviour
 import app.quiet.launcher.feature.focus.engine.Schedule
@@ -55,6 +56,8 @@ class ShellCommandReceiver : BroadcastReceiver() {
                         if (intent.hasExtra("logfeel")) d.logFeel = intent.getBooleanExtra("logfeel", false)
                         Log.i("QuietWater", "debug shader=${d.shaderMode} still=${d.forceStill} logfeel=${d.logFeel}")
                     }
+                    // Lock screen test knobs (session only, nothing saved): see feature/lock/LockDebug.kt.
+                    "lock" -> LockDebug.handle(app, intent)
                     // Underwater edition test hook: a Home bubble with no real notification behind it.
                     //   ... --es cmd bubble --es pkg com.whatsapp --es title "Asha" --es text "On my way"
                     "bubble" -> NotificationBubbles.inject(

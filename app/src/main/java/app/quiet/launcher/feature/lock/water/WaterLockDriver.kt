@@ -109,6 +109,8 @@ internal class WaterLockDriver(val host: WaterHost) {
     private var lastBeat = 0f
     private var beatArmed = true
     private var beat = 0f
+    /** The orb's beat now (0..1; eases to 0 when paused), for the cover's light. */
+    val beatNow: Float get() = beat
     var onSongChange: (Int) -> Unit = {}
 
     // ---------------------------------------------------------------- fingerprint drop and unlock
@@ -398,7 +400,7 @@ internal class WaterLockDriver(val host: WaterHost) {
         val c = host.toWorld(row, Offset(row.size.width / 2f, row.size.height * 0.46f))
         rowCx = c.x; rowCy = c.y; rowW = row.size.width.toFloat()
         if (orbId < 0) {
-            orbId = host.obtainGlass(GlassStyle(corner = 999.dp, bevel = 26.dp, lens = 0.75f, floats = true, stir = true, stiffness = 190f, damping = 0.42f))
+            orbId = host.obtainGlass(GlassStyle(corner = 999.dp, bevel = 17.dp, lens = 0.5f, floats = true, stir = true, stiffness = 190f, damping = 0.42f))
         }
         // The beat (the orb's own slow curve, as on the classic lock player) sends soft rings out.
         if (playing && !still) {
@@ -407,7 +409,10 @@ internal class WaterLockDriver(val host: WaterHost) {
             if (beatArmed && beat > 0.55f && beat > lastBeat) {
                 beatArmed = false
                 val ox = rowCx + orbDx; val oy = rowCy + orbDy
-                if (host.isUnder(ox, oy)) host.sim.ripple(ox, oy, 110f, 1.8f) else host.ring(ox, oy, 0.16f)
+                // A soft refraction ring that travels out from the drop (the grid splash alone was
+                // too faint to read on the phone), plus the splash itself while under water.
+                host.ring(ox, oy, 0.22f)
+                if (host.isUnder(ox, oy)) host.sim.ripple(ox, oy, 150f, 1.8f)
             }
             if (beat < 0.2f) beatArmed = true
             lastBeat = beat

@@ -162,7 +162,8 @@ internal fun BubbleLayer(dock: DockState, active: Boolean, reduced: Boolean, mod
     fun restY(b: Bubble) = dock.slabTop - b.rad - 5f * dp
     fun radOf(b: Bubble) = r * min(1.3f, 1f + 0.1f * (b.keys.size - 1).coerceAtLeast(0))
     fun minX() = dock.dockLeft + r + 8f * dp
-    fun maxX() = max(minX(), dock.dockRight - r - 8f * dp)
+    /** The right end of the bubbles' row: the dock's edge, or short of the battery label sharing the row. */
+    fun maxX() = max(minX(), min(dock.dockRight - r - 8f * dp, dock.shelfRight.let { if (it.isNaN()) Float.MAX_VALUE else it - r }))
     fun slotX(i: Int) = dock.dockLeft + 16f * dp + r + i * (2f * r + 11f * dp)
 
     /** Home spots for the resting bubbles: their own spot or slot, pushed apart along the dock top. */
@@ -199,6 +200,19 @@ internal fun BubbleLayer(dock: DockState, active: Boolean, reduced: Boolean, mod
             b.x = hx; b.y = restY(b)
             aim(b, b.x, b.y)
         }
+    }
+
+    /**
+     * Tells Home how much room the resting row needs above the dock (so the dock keeps it clear of
+     * Home's words) and how wide it is (so the battery label beside it never sits under a bubble).
+     */
+    fun publishShelf() {
+        // Hidden (another page, a sheet) keeps the room: Home doesn't shift each time it comes back.
+        val live = bubbles.filter { it.mode != GONE }
+        if (live.isEmpty()) { dock.shelf = 0f; dock.shelfWidth = 0f; return }
+        val big = live.maxOf { if (it.rad > 0f) it.rad else r }
+        dock.shelf = 2f * big + 5f * dp + 10f * dp
+        dock.shelfWidth = 16f * dp + live.sumOf { 2.0 * (if (it.rad > 0f) it.rad else r) }.toFloat() + 8f * dp * (live.size - 1) + 8f * dp
     }
 
     fun setGroup(b: Bubble, g: Int) {
@@ -279,18 +293,20 @@ internal fun BubbleLayer(dock: DockState, active: Boolean, reduced: Boolean, mod
             bubbles.forEach { b -> if (b.id >= 0 && b.mode != CARD) release(b, pop = false); if (b.mode != CARD) b.mode = REST }
             card?.let { c -> card = null; c.bubble.mode = REST; if (c.bubble.id >= 0) release(c.bubble, false) }
             dock.cardOpen = false
+            publishShelf()
             return@LaunchedEffect
         }
         bubbles.forEach { b ->
             if (b.id < 0 && b.mode != GONE && b.mode != CARD) { appear(b, rise = b.risePending && !reduced); b.risePending = false }
         }
         settleHomes()
+        publishShelf()
     }
-    // The dock moved (battery level, layout): the resting bubbles follow it.
+    // The dock moved (battery level, layout) or the label beside the row changed width: the resting bubbles follow.
     LaunchedEffect(Unit) {
-        snapshotFlow { Triple(dock.slabTop, dock.dockLeft, dock.dockRight) }.collect { if (!hiddenNow) settleHomes() }
+        snapshotFlow { listOf(dock.slabTop, dock.dockLeft, dock.dockRight, dock.shelfRight) }.collect { if (!hiddenNow) settleHomes() }
     }
-    DisposableEffect(Unit) { onDispose { bubbles.forEach { b -> if (b.id >= 0) { host.freeGlass(b.id); b.id = -1 } } } }
+    DisposableEffect(Unit) { onDispose { bubbles.forEach { b -> if (b.id >= 0) { host.freeGlass(b.id); b.id = -1 } }; dock.shelf = 0f; dock.shelfWidth = 0f } }
 
     // ---- merging: a held bubble fuses with the one it is dragged into (the engine posts EV_MERGE)
     fun merge(from: Bubble, into: Bubble) {
@@ -309,6 +325,7 @@ internal fun BubbleLayer(dock: DockState, active: Boolean, reduced: Boolean, mod
         }
         bubbles.remove(from)
         into.rad = radOf(into)
+        publishShelf()
         into.pulse = 0.2f
         host.feel(Feel.Plunk)
         host.ring(host.glassCx(into.id), host.glassCy(into.id), 0.45f)
@@ -453,7 +470,7 @@ internal fun BubbleLayer(dock: DockState, active: Boolean, reduced: Boolean, mod
                                     val ns = NotificationBubbles.items.value.filter { it.key in b.keys }
                                     val id = b.id; b.id = -1
                                     host.glassAlpha(id, 0f); scope.launch { delay(300); host.freeGlass(id) }
-                                    bubbles.remove(b)
+                                    bubbles.remove(b); publishShelf()
                                     ns.forEach { NotificationBubbles.dismiss(it) }
                                 })
                             HOP -> stepHop(b, step, hx, restY(b), b.rad) { b.mode = REST; dirty = true; host.styleGlass(b.id, RESTING.copy(group = b.group)) }
@@ -588,7 +605,7 @@ internal fun BubbleLayer(dock: DockState, active: Boolean, reduced: Boolean, mod
             delay(60)
             bubbles.forEach { o -> if (o !== b && o.id >= 0) host.glassAlpha(o.id, 1f) }
             if (card === c) card = null
-            if (b.mode == GONE) bubbles.remove(b)
+            if (b.mode == GONE) { bubbles.remove(b); publishShelf() }
         }
     }
 

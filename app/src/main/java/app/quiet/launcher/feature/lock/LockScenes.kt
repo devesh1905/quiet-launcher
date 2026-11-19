@@ -82,6 +82,9 @@ data class LockContext(
     val wallpaper: Boolean = false,
     /** Space kept clear above the bottom edge for the fingerprint ring (measured from the sensor). */
     val bottomReserve: androidx.compose.ui.unit.Dp = LockBottomReserve,
+    /** Plugged in: how fast it charges (NONE = not plugged in), shown under the date by [ChargeLine]. */
+    val charge: app.quiet.launcher.core.platform.ChargeRate.Tier = app.quiet.launcher.core.platform.ChargeRate.Tier.NONE,
+    val chargeLevel: Float = 0f,
 )
 
 // ---------- shared pieces ----------
@@ -118,6 +121,7 @@ fun LockClock(ctx: LockContext, modifier: Modifier = Modifier, scale: Float = 1f
             Format.longDate(ctx.minute),
             style = QType.body(16.sp).copy(color = ink.copy(alpha = 0.86f)),
         )
+        ChargeLine(ctx, ink)
     }
 }
 
@@ -385,6 +389,7 @@ fun TypesetScene(ctx: LockContext, modifier: Modifier = Modifier) {
             BasicText(min, style = poster.copy(drawStyle = Stroke(width = 1.2f * 2.75f)), maxLines = 1)
             Spacer(Modifier.height(16.dp))
             BasicText(Format.longDate(ctx.minute), style = QType.body(18.sp).copy(color = c.ink))
+            ChargeLine(ctx, c.ink, alignment = Alignment.Start)
             if (ctx.oneThing.isNotBlank()) {
                 Spacer(Modifier.height(28.dp))
                 BasicText("One thing today", style = QType.secondary(14.sp).copy(color = c.muted))

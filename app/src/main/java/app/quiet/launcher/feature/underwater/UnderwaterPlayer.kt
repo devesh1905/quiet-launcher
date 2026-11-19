@@ -833,12 +833,16 @@ fun SharedTransitionScope.UnderwaterPlayerScreen(
                 st.measureRoot(p.x, p.y, it.size.width.toFloat())
                 screenH = it.size.height.toFloat()
             }
-            .background(c.bg)
+            // No colour under it: the backdrop below is opaque (its gradient, or the painting) and covers it.
     ) {
         // The painting under the water, with the song's light pooling around the cover.
         WaterBackdrop(art?.imagePath, swatches)
         AmbientField(
-            palette = np.palette, artRect = st.artRect, modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.72f },
+            palette = np.palette, artRect = st.artRect, modifier = Modifier.fillMaxSize().graphicsLayer {
+                alpha = 0.72f
+                // One textured rect: the alpha goes on the draw, no full-screen offscreen buffer every frame.
+                compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
+            },
             maxLum = 0.06f, glow = 1f, pool = 0.7f, strength = ambientStrength, running = np.isPlaying,
             fallbackArt = np.track.art,
         )

@@ -5,7 +5,12 @@ package app.quiet.launcher.feature.underwater
 import android.app.ActivityOptions
 import android.graphics.Rect
 import android.view.View
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
@@ -25,7 +30,10 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import kotlinx.coroutines.launch
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -48,7 +56,9 @@ import app.quiet.launcher.container
 import app.quiet.launcher.core.model.AppEntry
 import app.quiet.launcher.core.model.NowPlaying
 import app.quiet.launcher.core.model.UsageToday
+import app.quiet.launcher.core.platform.ChargeRate
 import app.quiet.launcher.core.platform.Format
+import app.quiet.launcher.core.platform.rememberChargeTier
 import app.quiet.launcher.core.platform.SystemActions
 import app.quiet.launcher.designsystem.*
 import app.quiet.launcher.feature.gesture.hapticClock
@@ -67,7 +77,7 @@ import kotlin.math.roundToInt
  * readable (darker at the top for the clock). Before a painting is cached, a deep-water gradient in
  * the painting palette's colours (or a cool default).
  *
- * Depth: the painting sits a little behind the glass. It is overscaled 1.06x and shifts up to 13 dp
+ * Depth: the painting sits a little behind the glass. It is overscaled 1.07x and shifts up to 13 dp
  * against the phone's tilt on a soft spring (the engine steps it with the gravity it already reads,
  * so it only redraws when the tilt changes), while the water sloshes the other way: a tank.
  *
@@ -75,7 +85,7 @@ import kotlin.math.roundToInt
  * down) while the new one surfaces through the water, landing with a ring, a ripple and a Plunk.
  */
 @Composable
-fun WaterBackdrop(imagePath: String?, palette: IntArray?) {
+fun WaterBackdrop(imagePath: String?, palette: IntArray?, covered: () -> Boolean = { false }) {
     val host = app.quiet.launcher.feature.underwater.engine.LocalWater.current
     val bmp = rememberFileBitmap(imagePath, maxSide = 1400)
     val show = remember { Animatable(0f) }
@@ -123,10 +133,36 @@ fun WaterBackdrop(imagePath: String?, palette: IntArray?) {
     val drift = with(density) { 110.dp.toPx() }
     val surfaceFrom = with(density) { 80.dp.toPx() }
     val blurMax = with(density) { 16.dp.toPx() }
+    val deepBrush = remember(deep, mid) {
+        Brush.verticalGradient(0f to Color(0xFF050708), 0.45f to lerpC(deep, Color.Black, 0.35f), 1f to lerpC(mid, Color.Black, 0.55f))
+    }
+    // At rest (one painting, fully shown, nothing surfacing) the painting and its veil are one draw:
+    // the bitmap through a shader with the same crop, overscale and tilt shift as the Image layer, the
+    // veil composed over it in the shader. One full-screen pass a frame instead of two.
+    val atRest: () -> Boolean = {
+        cur != null && old == null && show.value >= 1f && rise.value >= 1f &&
+            app.quiet.launcher.feature.underwater.engine.WaterDebug.hide and 3 == 0
+    }
+    val restPaint = remember { RestPainting() }
     Box(
-        Modifier.fillMaxSize().background(
-            Brush.verticalGradient(0f to Color(0xFF050708), 0.45f to lerpC(deep, Color.Black, 0.35f), 1f to lerpC(mid, Color.Black, 0.55f))
-        )
+        Modifier.fillMaxSize()
+            // [covered]: something opaque (the player) is over all of it: draw nothing.
+            .drawWithContent { if (!covered()) drawContent() }
+            .drawBehind {
+                // The deep-water gradient only shows where the painting doesn't cover: before it is
+                // cached, while it fades in, and while a new one surfaces. Under an opaque painting at
+                // rest it is skipped (a full-screen fill every water frame).
+                val src = curSrc
+                val rest = atRest()
+                val opaque = rest && src != null && !src.hasAlpha()
+                if (!opaque) drawRect(deepBrush)
+                val c = cur
+                if (rest && src != null && c != null) {
+                    var tx = 0f; var ty = 0f; var sc = 1f
+                    if (host != null) { host.parTick; tx = host.parX * shift; ty = host.parY * shift; sc = coverScale(size.width, size.height, tx, ty, OVERSCALE) }
+                    drawIntoCanvas { restPaint.draw(it.nativeCanvas, src, size.width, size.height, tx, ty, sc) }
+                }
+            }
     ) {
         // No painting yet: soft pools of light, so the water still has something to bend.
         if (cur == null) androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
@@ -147,10 +183,10 @@ fun WaterBackdrop(imagePath: String?, palette: IntArray?) {
                 modifier = Modifier.fillMaxSize()
                     .graphicsLayer {
                         val k = sink.value
-                        if (host != null) { host.tick; translationX = host.parX * shift; translationY = host.parY * shift }
-                        translationY += drift * k * k
-                        val sc = 1.06f + 0.04f * k
-                        scaleX = sc; scaleY = sc
+                        var tx = 0f; var ty = 0f
+                        if (host != null) { host.parTick; tx = host.parX * shift; ty = host.parY * shift }
+                        ty += drift * k * k
+                        cover(tx, ty, OVERSCALE + 0.04f * k)
                         alpha = 1f - smooth(k)
                         val br = blurMax * k
                         renderEffect = if (br > 0.5f) androidx.compose.ui.graphics.BlurEffect(br, br) else null
@@ -159,31 +195,86 @@ fun WaterBackdrop(imagePath: String?, palette: IntArray?) {
             )
         }
         val c = cur
-        if (c != null) {
+        if (c != null && app.quiet.launcher.feature.underwater.engine.WaterDebug.hide and 1 == 0) {
             Image(
                 c, null, contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().graphicsLayer {
+                modifier = Modifier.fillMaxSize().drawWithContent { if (!atRest()) drawContent() }.graphicsLayer {
                     val k = 1f - rise.value
                     alpha = show.value * (1f - smooth(k))
                     if (host != null) {
-                        host.tick
-                        translationX = host.parX * shift; translationY = host.parY * shift + surfaceFrom * k
-                        val sc = 1.06f * (1f + 0.04f * k)
-                        scaleX = sc; scaleY = sc
+                        host.parTick
+                        cover(host.parX * shift, host.parY * shift + surfaceFrom * k, OVERSCALE * (1f + 0.04f * k))
                     }
                     val br = blurMax * 0.85f * k
                     renderEffect = if (br > 0.5f) androidx.compose.ui.graphics.BlurEffect(br, br) else null
                 },
             )
         }
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(
-                    0f to Color(0xCC000000), 0.22f to Color(0x8A000000), 0.5f to Color(0x66000000), 1f to Color(0x9E000000),
-                )
-            )
+        if (app.quiet.launcher.feature.underwater.engine.WaterDebug.hide and 2 == 0) Box(
+            Modifier.fillMaxSize().drawWithContent { if (!atRest()) drawContent() }.background(VeilBrush)
         )
     }
+}
+
+/** A soft dark halo under small type that sits over the water: it reads on any painting, never a hard drop shadow. */
+internal val WaterTextShadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 1f), 8f)
+
+/** How much bigger than the screen the painting is drawn, so the tilt shift (up to ~13 dp) has room. */
+private const val OVERSCALE = 1.07f
+
+/** The veil over the painting (darker at the top for the clock). */
+private val VeilStops = floatArrayOf(0f, 0.22f, 0.5f, 1f)
+private val VeilColors = intArrayOf(0xCC000000.toInt(), 0x8A000000.toInt(), 0x66000000, 0x9E000000.toInt())
+private val VeilBrush = Brush.verticalGradient(*Array(4) { VeilStops[it] to Color(VeilColors[it]) })
+
+/**
+ * The painting at rest and its veil in one draw. The bitmap is mapped exactly as the Image draws it
+ * (ContentScale.Crop, centred) and then as its layer moves it (scale [sc] about the centre, then
+ * shifted by tx, ty); the veil gradient is screen-fixed and composed over it (src-over) in the shader.
+ */
+private class RestPainting {
+    private var bmp: android.graphics.Bitmap? = null
+    private var bs: android.graphics.BitmapShader? = null
+    private var veilH = -1f
+    private var shader: android.graphics.Shader? = null
+    private val m = android.graphics.Matrix()
+    private val paint = android.graphics.Paint().apply { isFilterBitmap = true; isDither = true }
+
+    fun draw(c: android.graphics.Canvas, b: android.graphics.Bitmap, w: Float, h: Float, tx: Float, ty: Float, sc: Float) {
+        if (b !== bmp || h != veilH) {
+            val s = android.graphics.BitmapShader(b, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP)
+            if (android.os.Build.VERSION.SDK_INT >= 33) s.filterMode = android.graphics.BitmapShader.FILTER_MODE_LINEAR
+            val veil = android.graphics.LinearGradient(0f, 0f, 0f, h, VeilColors, VeilStops, android.graphics.Shader.TileMode.CLAMP)
+            bmp = b; bs = s; veilH = h
+            shader = android.graphics.ComposeShader(s, veil, android.graphics.PorterDuff.Mode.SRC_OVER)
+        }
+        val bw = b.width.toFloat(); val bh = b.height.toFloat()
+        val k = maxOf(w / bw, h / bh)
+        m.setScale(k, k)
+        m.postTranslate(((w - bw * k) / 2f).let { kotlin.math.round(it) }, ((h - bh * k) / 2f).let { kotlin.math.round(it) })
+        m.postScale(sc, sc, w / 2f, h / 2f)
+        m.postTranslate(tx, ty)
+        bs!!.setLocalMatrix(m)
+        paint.shader = shader
+        c.drawRect(0f, 0f, w, h, paint)
+    }
+}
+
+/** The scale [cover] gives for a shift ([tx], [ty]) at [sc] on a [w] x [h] box. */
+private fun coverScale(w: Float, h: Float, tx: Float, ty: Float, sc: Float): Float =
+    if (w > 0f && h > 0f) maxOf(sc, 1f + 2f * (abs(tx) + 1f) / w, 1f + 2f * (abs(ty) + 1f) / h) else sc
+
+/**
+ * Moves the painting by ([tx], [ty]) at scale [sc] (about its centre) and never lets an edge show:
+ * the scale grows just enough to cover the shift (the Image is clipped to its bounds before this
+ * layer scales it, so only the overscale itself is margin). At rest and for ordinary tilts that is
+ * [sc] itself; only a hard tilt plus the sinking/surfacing drift zooms a hair further.
+ */
+private fun androidx.compose.ui.graphics.GraphicsLayerScope.cover(tx: Float, ty: Float, sc: Float) {
+    val w = size.width; val h = size.height
+    val s = if (w > 0f && h > 0f) maxOf(sc, 1f + 2f * (abs(tx) + 1f) / w, 1f + 2f * (abs(ty) + 1f) / h) else sc
+    scaleX = s; scaleY = s
+    translationX = tx; translationY = ty
 }
 
 private fun lerpC(a: Color, b: Color, t: Float) = Color(a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t, 1f)
@@ -246,21 +337,20 @@ fun UnderwaterHomeContent(
     val clock = rememberHapticClockState(Q.reducedMotion)
     val scope = rememberCoroutineScope()
     val boxCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    val playing by rememberUpdatedState(nowPlaying != null)
-    val onBgLongPress by rememberUpdatedState(onBackgroundLongPress)
 
     /**
-     * A long press on empty water (not the dock, a bubble, glass or words: those take their own
+     * A long press on empty Home (not the dock, a bubble, glass or words: those take their own
      * touches) brings another painting: Clink, a ring where the finger is, and the backdrop sinks
-     * the old one and surfaces the new. Above the water, or while music plays (the existing glow
-     * menu owns the long press then), it does what it always did.
+     * the old one and surfaces the new. The music menu belongs to the music card alone (its own long
+     * press), so this works while music plays too. The classic colour-glow menu has nothing to act
+     * on here (there is no glow under water), so it is never opened from this edition's Home.
      */
     fun backgroundLongPress(p: Offset) {
         val k = boxCoords[0]
         val w = if (k != null && k.isAttached) host.toWorld(k, p) else p
         val pad = 8f * host.dp
         val onDock = w.x in (dock.dockLeft - pad)..(dock.dockRight + pad) && w.y in (dock.slabTop - pad)..(dock.slabBottom + pad)
-        if (playing || dock.focused || onDock || !host.isUnder(w.x, w.y)) { onBgLongPress(); return }
+        if (dock.focused || onDock) return
         host.feel(Feel.Clink)
         host.ring(w.x, w.y, 0.7f)
         host.ripple(w.x, w.y, 1.1f)
@@ -278,10 +368,44 @@ fun UnderwaterHomeContent(
     val rowPx = with(density) { rowH.toPx() }
     val padPx = with(density) { pad.toPx() }
     val gapPx = with(density) { gap.toPx() }
-    val avail = boxH - bottomH - textBottom - 2 * gapPx - 2 * padPx
+    // The battery label (measured: its world left edge and height) and the tier it shows.
+    val tier by rememberChargeTier(charging, batteryLevel)
+    var labelLeft by remember { mutableFloatStateOf(Float.NaN) }
+    var labelH by remember { mutableIntStateOf(0) }
+    // Notification bubbles rest in a row ON the dock's top edge. While there are any, the dock keeps
+    // that row clear of Home's words above it, and the battery label shares the row at the right end
+    // (centred on the bubbles), or, when the bubbles need its room too, lifts to sit just above them.
+    val bubR = 21f * host.dp
+    // Derived, not read directly: the label's and the dock's world x move on every frame of a pager
+    // swipe (the page slides and scales), which would recompose all of Home each frame.
+    val lifted by remember {
+        derivedStateOf { dock.shelf > 0f && !labelLeft.isNaN() && dock.shelfWidth > labelLeft - dock.dockLeft - 12f * host.dp }
+    }
+    LaunchedEffect(dock) {
+        snapshotFlow { if (dock.shelf > 0f && !lifted && !labelLeft.isNaN()) labelLeft - 10f * host.dp else Float.NaN }
+            .collect { dock.shelfRight = it }
+    }
+    val reserveWant = when {
+        dock.shelf <= 0f -> gapPx
+        lifted -> dock.shelf + labelH + 6f * host.dp
+        else -> maxOf(gapPx, dock.shelf + 4f * host.dp)
+    }
+    val reserve by androidx.compose.animation.core.animateFloatAsState(reserveWant, spring(0.82f, 260f), label = "shelf")
+    // From the dock's top up to the label's top.
+    val pinWant = when {
+        dock.shelf <= 0f -> 24f * host.dp
+        lifted -> dock.shelf - 4f * host.dp + labelH
+        else -> 5f * host.dp + bubR + labelH / 2f
+    }
+    val pin by androidx.compose.animation.core.animateFloatAsState(pinWant, spring(0.82f, 260f), label = "pin")
+    val avail = boxH - bottomH - textBottom - gapPx - reserveWant - 2 * padPx
     val fit = if (boxH == 0) 5 else (avail / rowPx).toInt().coerceIn(1, 7)
     val shown = items.take(fit)
-    val slabH = shown.size.coerceAtLeast(1) * rowPx + 2 * padPx
+    // The slab's height follows the rows as they open and close (more bubbles or music: a row folds away).
+    val rowsShown by androidx.compose.animation.core.animateFloatAsState(shown.size.coerceAtLeast(1).toFloat(), spring(0.86f, 320f), label = "rows")
+    val slabH = rowsShown * rowPx + 2 * padPx
+    val ready = boxH > 0 && textBottom > 0
+    val slabLaid by remember { derivedStateOf { dock.slabTop >= 0f } }
 
     Box(
         Modifier
@@ -333,17 +457,17 @@ fun UnderwaterHomeContent(
                     ),
             )
             Spacer(Modifier.height(18.dp))
-            BasicText(Format.longDate(minute), style = QType.body(17.sp).copy(color = c.muted))
+            BasicText(Format.longDate(minute), style = QType.body(17.sp).copy(color = c.muted, shadow = WaterTextShadow))
             if (oneThing.isNotBlank()) {
                 Spacer(Modifier.height(24.dp))
-                BasicText(oneThing, style = QType.question(22.sp).copy(color = c.ink), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                BasicText(oneThing, style = QType.question(22.sp).copy(color = c.ink, shadow = WaterTextShadow), maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             if (showUsage) {
                 Spacer(Modifier.height(28.dp))
-                if (usagePerm) UsageBlock(usage, compact = true, onClick = onOpenUsage)
+                if (usagePerm) UsageBlock(usage, compact = true, onClick = onOpenUsage, shadow = WaterTextShadow)
                 else BasicText(
                     "Allow usage access to see your day here.",
-                    style = QType.secondary(15.sp).copy(color = c.muted),
+                    style = QType.secondary(15.sp).copy(color = c.muted, shadow = WaterTextShadow),
                     modifier = Modifier.pressable {
                         app.quiet.launcher.core.platform.Permissions.launch(ctx, app.quiet.launcher.core.platform.Permissions.usageAccessIntent(ctx))
                     },
@@ -351,25 +475,45 @@ fun UnderwaterHomeContent(
             }
         }
 
-        // ---- the battery, written on the waterline at the right edge (it rides the surface).
-        val pct = "${(batteryLevel * 100).toInt()}%" + if (charging) " charging" else ""
-        BasicText(
-            pct,
-            style = QType.secondary(13.sp).copy(color = c.muted),
-            modifier = Modifier.align(Alignment.TopEnd).padding(end = 8.dp).graphicsLayer {
-                host.tick
-                // On the waterline, but never under the dock's glass: then it sits just above the slab.
-                val dockTop = (host.restLine - boxTopWorld - slabH * 0.3f).coerceIn(textBottom + gapPx, maxOf(textBottom + gapPx, boxH - bottomH - gapPx - slabH))
-                val y = minOf(host.waterY(host.w - 40f * host.dp) - boxTopWorld - 22f * host.dp, dockTop - 24f * host.dp)
-                val lo = textBottom.toFloat()
-                translationY = y.coerceIn(lo, maxOf(lo, (boxH - bottomH).toFloat() - 20f * host.dp))
-                alpha = 1f - 0.9f * dock.dim.value
-            },
-        )
+        // ---- the battery, written on the waterline at the right edge (it rides the surface): the
+        // charge state from the measured rate ("Fast charging · 62%"), just "62%" unplugged. A new
+        // state crossfades in (the old one fades up and away, the new rises into place).
+        val dockTopNow = remember { floatArrayOf(0f) }
+        Row(
+            modifier = Modifier.align(Alignment.TopEnd).padding(end = 8.dp)
+                .onGloballyPositioned { labelLeft = host.toWorld(it).x; labelH = it.size.height }
+                .graphicsLayer {
+                    host.tick
+                    // The dock's top as laid out now (box px); before that, where it will go.
+                    dockTopNow[0] = if (dock.slabTop >= 0f) dock.slabTop - boxTopWorld
+                    else (host.restLine - boxTopWorld - slabH * 0.3f).coerceIn(textBottom + reserve, maxOf(textBottom + reserve, boxH - bottomH - gapPx - slabH))
+                    val y = minOf(host.waterY(host.w - 40f * host.dp) - boxTopWorld - 22f * host.dp, dockTopNow[0] - pin)
+                    val lo = textBottom.toFloat()
+                    translationY = y.coerceIn(lo, maxOf(lo, (boxH - bottomH).toFloat() - 20f * host.dp))
+                    alpha = 1f - 0.9f * dock.dim.value
+                },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val style = QType.secondary(13.sp).copy(color = c.muted, shadow = WaterTextShadow)
+            AnimatedContent(
+                targetState = tier.label,
+                transitionSpec = {
+                    (fadeIn(tween(520, 140, QMotion.EaseOutQuiet)) + slideInVertically(tween(620, 140, QMotion.EaseOutQuiet)) { it / 3 }) togetherWith
+                        (fadeOut(tween(260)) + slideOutVertically(tween(360)) { -it / 4 }) using
+                        SizeTransform(clip = false) { _, _ -> spring(0.9f, 300f) }
+                },
+                contentAlignment = Alignment.CenterEnd,
+                label = "charge",
+            ) { label ->
+                if (label.isNotEmpty()) BasicText("$label · ", style = style.copy(color = if (label == ChargeRate.Tier.FULL.label) c.ink.copy(alpha = 0.86f) else c.muted))
+            }
+            BasicText("${(batteryLevel * 100).toInt()}%", style = style)
+        }
 
         // ---- the glass dock: favourites on a slab resting on the water. It sits where the waterline
-        // is (a third of it above the surface), kept between the world text and the bottom.
-        val minTop = textBottom + gapPx
+        // is (a third of it above the surface), kept between the world text (and the bubbles' row
+        // above the dock, when there are bubbles) and the bottom.
+        val minTop = textBottom + reserve
         val maxTop = boxH - bottomH - gapPx - slabH
         GlassBox(
             style = GlassStyle(corner = 26.dp, bevel = 14.dp, floats = true, stiffness = 520f, damping = 0.7f),
@@ -387,7 +531,16 @@ fun UnderwaterHomeContent(
                 },
         ) {
             Column(Modifier.fillMaxWidth().padding(vertical = pad, horizontal = 20.dp)) {
-                shown.forEach { item -> key(item.key) { DockRow(dock, view, item, rowH) } }
+                items.take(7).forEachIndexed { i, item ->
+                    key(item.key) {
+                        if (!ready) { if (i < fit) DockRow(dock, view, item, rowH) }
+                        else AnimatedVisibility(
+                            visible = i < fit,
+                            enter = fadeIn(tween(260, 120)) + expandVertically(spring(0.86f, 320f), expandFrom = Alignment.Top),
+                            exit = fadeOut(tween(140)) + shrinkVertically(spring(0.86f, 320f), shrinkTowards = Alignment.Top),
+                        ) { DockRow(dock, view, item, rowH) }
+                    }
+                }
                 if (favourites.isEmpty()) {
                     Box(Modifier.height(rowH), contentAlignment = Alignment.CenterStart) {
                         BasicText("Long press any app in the list to add it here.", style = QType.secondary(15.sp).copy(color = c.muted))
@@ -435,7 +588,7 @@ fun UnderwaterHomeContent(
         // a lifted drop and an open folder's card.
         // Only once the dock is really laid out (the box knows its height): bubbles never aim at a
         // first-pass dock position.
-        if (dock.slabTop >= 0f && boxH > 0 && textBottom > 0) BubbleLayer(
+        if (slabLaid && boxH > 0 && textBottom > 0) BubbleLayer(
             dock = dock, active = active && !playerOpen,
             reduced = Q.reducedMotion, modifier = Modifier.matchParentSize(),
         )

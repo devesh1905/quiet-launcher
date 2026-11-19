@@ -95,15 +95,27 @@ fun HomeScreen(
     LaunchedEffect(nowPlaying == null) { if (nowPlaying == null) onPlayerOpenChange(false) }
 
     // The glow drifts only for 20 s after the last touch, then holds still (no rendering).
-    var touchTick by remember { mutableIntStateOf(0) }
+    // The last touch is a plain timestamp, not state: a counter bumped on every pointer event made all
+    // of Home recompose on every move of a finger (every frame of a swipe or a drag).
+    val lastTouch = remember { longArrayOf(android.os.SystemClock.uptimeMillis()) }
     var awake by remember { mutableStateOf(true) }
-    LaunchedEffect(touchTick, isActive) { awake = true; kotlinx.coroutines.delay(20_000); awake = false }
+    LaunchedEffect(isActive) { lastTouch[0] = android.os.SystemClock.uptimeMillis(); awake = true }
+    LaunchedEffect(awake) {
+        if (!awake) return@LaunchedEffect
+        while (true) {
+            val left = lastTouch[0] + 20_000 - android.os.SystemClock.uptimeMillis()
+            if (left <= 0) break
+            kotlinx.coroutines.delay(left)
+        }
+        awake = false
+    }
     SharedTransitionLayout(
         Modifier.fillMaxSize().pointerInput(Unit) {
             awaitPointerEventScope {
                 while (true) {
                     awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                    touchTick++
+                    lastTouch[0] = android.os.SystemClock.uptimeMillis()
+                    if (!awake) awake = true
                 }
             }
         }
@@ -412,7 +424,7 @@ private fun BatteryHairline(level: Float, charging: Boolean) {
 }
 
 @Composable
-internal fun UsageBlock(usage: UsageToday, compact: Boolean, onClick: () -> Unit) {
+internal fun UsageBlock(usage: UsageToday, compact: Boolean, onClick: () -> Unit, shadow: androidx.compose.ui.graphics.Shadow? = null) {
     val c = Q.colors
     val over = usage.totalMs - usage.budgetMs
     Column(Modifier.fillMaxWidth().pressable(pressedScale = 0.99f, pressedAlpha = 0.75f, onClick = onClick)) {
@@ -420,7 +432,7 @@ internal fun UsageBlock(usage: UsageToday, compact: Boolean, onClick: () -> Unit
             if (small) {
                 BasicText(
                     "${Format.duration(usage.totalMs)} of ${Format.duration(usage.budgetMs)} today, ${usage.pickups} pickups",
-                    style = QType.secondary(15.sp).copy(color = c.muted),
+                    style = QType.secondary(15.sp).copy(color = c.muted, shadow = shadow),
                 )
             } else {
                 Column {

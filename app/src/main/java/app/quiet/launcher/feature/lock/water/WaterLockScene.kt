@@ -71,6 +71,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -158,7 +159,40 @@ fun WaterLockScene(
     val driver = remember(host) { WaterLockDriver(host) }
     val still = Q.reducedMotion || !ctx.animate
     val resumed = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value.isAtLeast(Lifecycle.State.RESUMED)
-    WaterEngine(host, battery.level, battery.charging, swatches, reduced = still, visible = true)
+    // A song floats its cover on the water, so while one shows the water stands at the raft's line
+    // (about a fifth of the cover under) instead of at the battery level, wherever the battery is:
+    // at a low battery the cover would otherwise hang in the air, at a high one sink. It rises or
+    // falls there on the waterline's own spring; the words under the clock still give the level.
+    var worldH by remember { mutableIntStateOf(0) }
+    var raftLine by remember { mutableStateOf(Float.NaN) }
+    val waterLevel = if (np != null && !raftLine.isNaN() && worldH > 0)
+        (1f - (raftLine / worldH - WaterHost.TOP) / (WaterHost.BOTTOM - WaterHost.TOP)).coerceIn(0f, 1f)
+    else battery.level
+    // The last song, so the music layout can fade out with its own cover when the music stops.
+    val lastSong = remember { mutableStateOf(np) }
+    if (np != null) lastSong.value = np
+    // The cover shapes the painting while a song plays (CoverLight.kt): a gentle grade, its colours in
+    // the caustics, its light around the raft. In over ~1 s; out when the music stops or has rested
+    // paused for about 3 minutes (timed from the pause, so a later wake still knows).
+    var pausedLong by remember { mutableStateOf(false) }
+    LaunchedEffect(np?.isPlaying, np?.track?.id) {
+        val n = np
+        if (n == null || n.isPlaying) { pausedLong = false; return@LaunchedEffect }
+        val left = 180_000L - (SystemClock.elapsedRealtime() - n.positionUpdatedAt)
+        if (left > 0) { pausedLong = false; kotlinx.coroutines.delay(left) }
+        pausedLong = true
+    }
+    val coverOn = np != null && !pausedLong
+    val coverFx by animateFloatAsState(
+        if (coverOn) 1f else 0f,
+        tween(if (Q.reducedMotion) 0 else if (coverOn) 1000 else 1400, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "coverFx",
+    )
+    val coverPalHeld = remember { mutableStateOf<IntArray?>(null) }
+    np?.palette?.let { coverPalHeld.value = it }
+    val coverPal = rememberBlendedPalette(coverPalHeld.value)
+    var coverRect by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    WaterEngine(host, waterLevel, battery.charging, causticPalette(swatches, coverPal, coverFx), reduced = still, visible = true)
 
     DisposableEffect(control, driver) {
         control?.driver = driver
@@ -200,8 +234,7 @@ fun WaterLockScene(
 
     // The resting waterline, worked out exactly as the engine does (WaterHost.levelToY), so the
     // clock and the cover are placed right on the first frame instead of gliding in.
-    var worldH by remember { mutableIntStateOf(0) }
-    val rest = if (worldH > 0) worldH * (WaterHost.TOP + (WaterHost.BOTTOM - WaterHost.TOP) * (1f - battery.level.coerceIn(0f, 1f))) else 0f
+    val rest = if (worldH > 0) worldH * (WaterHost.TOP + (WaterHost.BOTTOM - WaterHost.TOP) * (1f - waterLevel.coerceIn(0f, 1f))) else 0f
 
     QuietTheme(dark = true, reducedMotion = Q.reducedMotion) {
         CompositionLocalProvider(LocalWater provides host) {
@@ -221,10 +254,15 @@ fun WaterLockScene(
                         }
                     }
             ) {
-                PaintingUnderWater(ctx.art?.imagePath, swatches)
+                val song = lastSong.value
+                PaintingUnderWater(ctx.art?.imagePath, swatches, gradeFilter(coverPal, coverFx))
+                CoverGlow(host, driver, coverPal, rect = { coverRect }, amount = { coverFx })
                 if (rest > 0f) {
-                    if (np != null) WaterMusic(ctx, np, repo, host, driver, rest, tint, onMusicLongPress)
-                    else WaterIdle(ctx, rest, tint, onArtLongPress)
+                    Crossfade(targetState = np != null, animationSpec = tween(if (Q.reducedMotion) 0 else 700), label = "waterMode") { on ->
+                        val s = if (on) np ?: song else null
+                        if (s != null) WaterMusic(ctx, s, repo, host, driver, tint, onMusicLongPress, onCover = { coverRect = it }) { raftLine = it }
+                        else WaterIdle(ctx, rest, tint, onArtLongPress)
+                    }
                 }
                 if (control != null) SensorDrop(driver)
             }
@@ -236,7 +274,7 @@ fun WaterLockScene(
 
 /** Today's painting, full bleed, with a soft veil only where type sits (the clock, the label). */
 @Composable
-private fun PaintingUnderWater(path: String?, palette: IntArray?) {
+private fun PaintingUnderWater(path: String?, palette: IntArray?, grade: androidx.compose.ui.graphics.ColorFilter? = null) {
     val bmp = rememberFileBitmap(path, maxSide = 1600)
     val deep = palette?.getOrNull(0)?.let { Color(it) } ?: Color(0xFF0B1A22)
     val mid = palette?.getOrNull(2)?.let { Color(it) } ?: Color(0xFF1E3B47)
@@ -255,7 +293,7 @@ private fun PaintingUnderWater(path: String?, palette: IntArray?) {
         Crossfade(targetState = bmp, animationSpec = tween(700), label = "waterPainting") { b ->
             if (b != null) {
                 val img = remember(b) { b.asImageBitmap() }
-                Image(img, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                Image(img, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, colorFilter = grade)
             }
         }
         Box(
@@ -290,22 +328,19 @@ private fun WaterIdle(ctx: LockContext, rest: Float, tint: Color, onArtLongPress
         Box(
             Modifier.fillMaxWidth().offset { IntOffset(0, top.roundToInt()) }
                 .graphicsLayer { alpha = if (clockH > 0) 1f else 0f }
-                .drawBehind {
-                    // A soft dark halo under the time, so it reads on any painting.
-                    val r = size.width * 0.52f
-                    drawRect(
-                        Brush.radialGradient(listOf(Color.Black.copy(alpha = 0.42f), Color.Black.copy(alpha = 0.16f), Color.Transparent), center = center, radius = r),
-                        topLeft = Offset(0f, center.y - r), size = androidx.compose.ui.geometry.Size(size.width, r * 2f),
-                    )
-                },
+                .clockHalo(),
             contentAlignment = Alignment.TopCenter,
         ) {
             LockClock(ctx, Modifier.onSizeChanged { clockH = it.height }, tint = tint)
         }
         // The reflection: the clock mirrored about the surface, fading with depth. It lives in the
         // water, so the ripples and the swell bend it; when the clock rides high, it sits at the line.
+        // The painting's label (top, px in this box): the reflection fades out before it, never over it.
+        var labelTop by remember { mutableStateOf(Float.MAX_VALUE) }
         if (clockH > 0) {
             val reflTop = rest + (rest - (top + clockH)).coerceIn(2f, gap)
+            val fade = with(density) { 36.dp.toPx() }
+            val room = labelTop - with(density) { 10.dp.toPx() } - reflTop
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -322,6 +357,12 @@ private fun WaterIdle(ctx: LockContext, rest: Float, tint: Color, onArtLongPress
                             Brush.verticalGradient(0f to Color.Transparent, 0.45f to Color.Black.copy(alpha = 0.3f), 1f to Color.Black),
                             blendMode = BlendMode.DstIn,
                         )
+                        // Flipped: content y maps to reflTop + (height - y); keep only what lies above the label.
+                        val cut = size.height - room
+                        if (cut > 0f) drawRect(
+                            Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, startY = cut, endY = cut + fade),
+                            blendMode = BlendMode.DstIn,
+                        )
                     },
                 contentAlignment = Alignment.TopCenter,
             ) {
@@ -336,6 +377,7 @@ private fun WaterIdle(ctx: LockContext, rest: Float, tint: Color, onArtLongPress
                     .windowInsetsPadding(WindowInsets.systemBars)
                     .padding(horizontal = 32.dp)
                     .padding(bottom = LockBottomReserve)
+                    .onGloballyPositioned { labelTop = it.positionInParent().y }
             ) {
                 LockLabel(
                     ctx, art.title, art.artist,
@@ -366,6 +408,15 @@ private fun WaterIdle(ctx: LockContext, rest: Float, tint: Color, onArtLongPress
     }
 }
 
+/** A soft dark halo under the time, so its hairlines read on any painting. */
+private fun Modifier.clockHalo(): Modifier = drawBehind {
+    val r = size.width * 0.52f
+    drawRect(
+        Brush.radialGradient(listOf(Color.Black.copy(alpha = 0.42f), Color.Black.copy(alpha = 0.16f), Color.Transparent), center = center, radius = r),
+        topLeft = Offset(0f, center.y - r), size = androidx.compose.ui.geometry.Size(size.width, r * 2f),
+    )
+}
+
 // ------------------------------------------------------------------------------ music
 
 /**
@@ -376,7 +427,7 @@ private fun WaterIdle(ctx: LockContext, rest: Float, tint: Color, onArtLongPress
 @Composable
 private fun WaterMusic(
     ctx: LockContext, np: NowPlaying, repo: NowPlayingRepository, host: WaterHost, driver: WaterLockDriver,
-    rest: Float, tint: Color, onLongPress: () -> Unit,
+    tint: Color, onLongPress: () -> Unit, onCover: (androidx.compose.ui.geometry.Rect) -> Unit, onRaftLine: (Float) -> Unit,
 ) {
     val c = Q.colors
     val reduced = Q.reducedMotion
@@ -401,7 +452,7 @@ private fun WaterMusic(
             Modifier.onSizeChanged { clockH = it.height }.graphicsLayer {
                 scaleX = clockScale; scaleY = clockScale
                 transformOrigin = TransformOrigin(0.5f, 0f)
-            },
+            }.clockHalo(),
             tint = tint,
         )
         Spacer(Modifier.height(12.dp + with(density) { (clockH * (clockScale - 1f)).toDp() }))
@@ -412,8 +463,10 @@ private fun WaterMusic(
             val sidePx = with(density) { side.toPx() }
             val stageH = constraints.maxHeight.toFloat()
             val stageTop = stage?.let { host.toWorld(it).y } ?: 0f
-            val restLocal = rest - stageTop
-            val wantCy = (restLocal - sidePx * 0.28f).coerceIn(sidePx / 2f, max(sidePx / 2f, stageH - sidePx / 2f))
+            // The cover sits in the middle of its stage; the water comes to it (see WaterLockScene).
+            val wantCy = (stageH / 2f).coerceIn(sidePx / 2f, max(sidePx / 2f, stageH - sidePx / 2f))
+            val line = stageTop + wantCy + sidePx * 0.28f
+            if (stage != null) SideEffect { onRaftLine(line) }
             val cy = settling(wantCy, ready = stage != null, reduced = reduced)
             val away = { driver.away() }
             GlassBox(
@@ -422,6 +475,11 @@ private fun WaterMusic(
                     .align(Alignment.TopCenter)
                     .offset { IntOffset(0, (cy - sidePx / 2f).roundToInt()) }
                     .size(side)
+                    .onGloballyPositioned { c ->
+                        // Where the cover's light comes from (world px, before its sideways ride).
+                        val p = host.toWorld(c)
+                        onCover(androidx.compose.ui.geometry.Rect(p.x, p.y, p.x + c.size.width, p.y + c.size.height))
+                    }
                     .graphicsLayer {
                         translationX = driver.coverX
                         alpha = if (stage != null) 1f - 0.8f * away() else 0f
@@ -537,7 +595,7 @@ private fun OrbDrop(np: NowPlaying, repo: NowPlayingRepository, host: WaterHost,
             host.tick
             val cx = size.width / 2f + driver.orbDx
             val cy = size.height * 0.46f + driver.orbDy
-            val u = 5.dp.toPx()
+            val u = 3.6.dp.toPx()   // stays inside the drop's flat centre, so the lens reads it, not the rim
             val ink = Ink.copy(alpha = 0.9f)
             val bars = 1f - paused
             if (bars > 0.01f) {

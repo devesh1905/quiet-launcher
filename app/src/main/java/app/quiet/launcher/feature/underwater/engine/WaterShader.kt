@@ -46,6 +46,7 @@ uniform float4 uGBox;
 uniform float uGN;
 uniform float uDbg;
 uniform float uMergeK;
+uniform float uTopY;
 uniform float3 uDk;
 uniform float3 uAc;
 uniform float3 uMd;
@@ -73,12 +74,14 @@ float3 swell(float2 q){
 }
 float3 smin3(float3 a,float3 b,float k){ float3 h=clamp(.5+.5*(b-a)/k,0.,1.); return mix(b,a,h)-k*h*(1.-h); }
 float sdRR(float2 q,float2 b,float r){ float2 v=abs(q)-b+r; return length(max(v,0.))+min(max(v.x,v.y),0.)-r; }
-// The union at p, p+(1,0) and p+(0,1) (x, y, z: the gradient comes from one loop), and the parameters
-// of the nearest body (alpha, lens, frost, bevel, centre). Bodies whose bounding circle (uGD.z) is
-// more than 64 dp away are skipped: that is exact wherever the result is used (< 30 dp), since the
-// smooth-min of anything that far is the near body's distance.
-float3 glassField(float2 p, out float4 bA, out float4 bB, out float4 bC){
-  float3 d0=float3(1e4); float3 d1=float3(1e4); float3 d2=float3(1e4); float3 d3=float3(1e4); float best=1e4;
+float smin1(float a,float b,float k){ float h=clamp(.5+.5*(b-a)/k,0.,1.); return mix(b,a,h)-k*h*(1.-h); }
+// The union's distance at p, and the parameters of the nearest body (alpha, lens, frost, bevel,
+// centre). Bodies whose bounding circle (uGD.z) is more than 64 dp away are skipped: that is exact
+// wherever the result is used (< 30 dp), since the smooth-min of anything that far is the near
+// body's distance. One box distance per body: most pixels near glass are deep inside a slab or
+// well outside it, where the gradient is not needed.
+float glassDist(float2 p, out float4 bA, out float4 bB, out float4 bC){
+  float d0=1e4; float d1=1e4; float d2=1e4; float d3=1e4; float best=1e4;
   bA=float4(0.); bB=float4(0.); bC=float4(0.);
   float T=64.*uDp;
   for(int i=0;i<16;i++){
@@ -92,8 +95,31 @@ float3 glassField(float2 p, out float4 bA, out float4 bB, out float4 bC){
         float2 q=float2(D.x*v.x+D.y*v.y, -D.y*v.x+D.x*v.y);
         float2 b=max(A.zw*float2(1.+C.z,1./(1.+C.z)),float2(.5));
         float mb=min(b.x,b.y); float r=min(B.x,mb);
+        float d=sdRR(q,b,r)+(1.-B.z)*mb*1.05;
+        if(d<best){ best=d; bA=A; bB=B; bC=C; }
+        float g=B.y;
+        if(g<.5) d0=min(d0,d); else if(g<1.5) d1=smin1(d1,d,uMergeK); else if(g<2.5) d2=smin1(d2,d,uMergeK); else d3=smin1(d3,d,uMergeK);
+      }
+    }
+  }
+  return min(min(d0,d1),min(d2,d3));
+}
+// The union at p, p+(1,0) and p+(0,1) (x, y, z): the gradient, only for pixels in the rim band.
+float3 glassField(float2 p){
+  float3 d0=float3(1e4); float3 d1=float3(1e4); float3 d2=float3(1e4); float3 d3=float3(1e4);
+  float T=64.*uDp;
+  for(int i=0;i<16;i++){
+    if(float(i)>=uGN) break;
+    float4 B=uGB[i];
+    if(B.z>.002){
+      float4 A=uGA[i]; float4 D=uGD[i];
+      float2 v=p-A.xy;
+      if(length(v)-D.z<T){
+        float4 C=uGC[i];
+        float2 q=float2(D.x*v.x+D.y*v.y, -D.y*v.x+D.x*v.y);
+        float2 b=max(A.zw*float2(1.+C.z,1./(1.+C.z)),float2(.5));
+        float mb=min(b.x,b.y); float r=min(B.x,mb);
         float3 d=float3(sdRR(q,b,r), sdRR(q+float2(D.x,-D.y),b,r), sdRR(q+float2(D.y,D.x),b,r))+(1.-B.z)*mb*1.05;
-        if(d.x<best){ best=d.x; bA=A; bB=B; bC=C; }
         float g=B.y;
         if(g<.5) d0=min(d0,d); else if(g<1.5) d1=smin3(d1,d,uMergeK); else if(g<2.5) d2=smin3(d2,d,uMergeK); else d3=smin3(d3,d,uMergeK);
       }
@@ -111,6 +137,10 @@ float3 absorb(float3 w,float d,float amt){
   return mix(w,mix(t,w,keep),amt);
 }
 half4 main(float2 xy){
+  // Above the highest point of the surface (uTopY, from the CPU, with a margin), outside every glass
+  // body's reach, with no ring or drop in flight, the pass below returns exactly this pixel: return
+  // it at once (the clock and the sky above the water skip all of it).
+  if(uRings<=0. && uDrops<=0. && xy.y<uTopY && !(xy.x>uGBox.x && xy.y>uGBox.y && xy.x<uGBox.z && xy.y<uGBox.w)) return half4(src(xy).rgb,1.);
   float dp=uDp;
   // ---- analytic rings: refraction waves through air and water alike
   float2 ro=float2(0.); float rl=0.;
@@ -132,19 +162,23 @@ half4 main(float2 xy){
   float2 gn=float2(0.,-1.);
   // Only inside the bounding box of every body's reach (uGBox, from the CPU) is the glass looked at.
   if(uDbg!=2. && xy.x>uGBox.x && xy.y>uGBox.y && xy.x<uGBox.z && xy.y<uGBox.w){
-    float3 gf=glassField(xy,gA,gB,gC);
-    gd=gf.x;
-    if(gd<30.*dp){ float2 gg=gf.yz-gd; gn=gg/(length(gg)+1e-5); }
+    gd=glassDist(xy,gA,gB,gC);
+    // The normal only matters on the dome (within the bevel) and in the 30 dp halo outside it;
+    // deeper inside the dome is flat, whatever the gradient.
+    if(gd<30.*dp && gd>-max(gC.w,1.)-2.){ float3 gf=glassField(xy); float2 gg=gf.yz-gf.x; gn=gg/(length(gg)+1e-5); }
   }
   // ---- the water
   float sy=surfY(xy.x);
   float d=xy.y-sy;
   if(uDbg==3.) d=-1e4;
   float3 H=normalize(float3(-.35,-.75,.55)+float3(0.,0.,1.));
+  // Deep inside glass at full alpha the glass replaces the pixel outright (mix weight 1 below), so
+  // the water under it is not worth shading: big slabs (the dock) skip 4-5 taps per pixel.
+  bool covered=gd< -.8 && gB.z*1.4>=1.;
   // Fully under the water this is replaced below, so it is only sampled near and above the line.
   float3 col=float3(0.);
-  if(d<1.) col=src(xy+ro).rgb;
-  if(d>-3.){
+  if(d<1. && !covered) col=src(xy+ro).rgb;
+  if(d>-3. && !covered){
     float near=exp(-max(d,0.)/(uRes.y*.32));
     float cell=uRes.x/uGrid.x;
     float3 g=float3(0.);

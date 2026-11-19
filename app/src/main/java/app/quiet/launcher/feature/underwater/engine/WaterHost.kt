@@ -76,6 +76,12 @@ class WaterHost internal constructor() {
     internal var dp = 1f
     internal var still = false
     internal var running = false
+    /**
+     * True while the frame loop runs (anything moving or shimmering); false while it holds. Drives the
+     * sensor mode: the fused gravity sensor (gyro) while awake, the low-power accelerometer at 5 Hz
+     * while holding, just enough to notice a tilt and wake.
+     */
+    internal var awake by androidx.compose.runtime.mutableStateOf(false)
 
     // ---- inputs
     /** Battery level 0..1 (the waterline). */
@@ -100,6 +106,15 @@ class WaterHost internal constructor() {
         private set
     private var vParX = 0f
     private var vParY = 0f
+    /**
+     * Bumped only when the lean has really moved (more than ~0.04 px of shift since the last bump).
+     * The backdrop reads this, not [tick], so it is not re-recorded on every water frame: the world
+     * layer then only repaints what actually moved (its damage), not the whole painting.
+     */
+    var parTick by androidx.compose.runtime.mutableIntStateOf(0)
+        private set
+    private var pubParX = 0f
+    private var pubParY = 0f
     private var tParX = 0f
     private var tParY = 0f
     /** The pitch the phone is usually held at (slow average of gy): the painting centres on it. */
@@ -123,6 +138,10 @@ class WaterHost internal constructor() {
     private var fullUntil = 0L
     private var staticDirty = true
     private var oneFrame = true
+    /** Last [wake] (ms): something else on screen changed, so the frame stays at the display rate a moment. */
+    private var lastWake = 0L
+    /** Why the last frame ran (trace counter "water.reason"): 1 wake, 2 finger, 3 burst, 4 drops/rings, 5 energy, 6 shimmer. */
+    internal var reason = 0
     internal var time = 0f
 
     // ================================================================ public API
@@ -191,7 +210,13 @@ class WaterHost internal constructor() {
     }
 
     /** Ask for frames (call after changing anything the water should show). */
-    fun wake() { staticDirty = true; oneFrame = true; wakeCh.trySend(Unit) }
+    fun wake() {
+        lastWake = SystemClock.uptimeMillis()
+        wakeQuiet()
+    }
+
+    /** A frame for an input of the water's own (tilt, level): no display-rate burst. */
+    private fun wakeQuiet() { staticDirty = true; oneFrame = true; wakeCh.trySend(Unit) }
 
     /** Converts a point in [coords] to world px. */
     fun toWorld(coords: LayoutCoordinates, p: Offset = Offset.Zero): Offset {
@@ -228,12 +253,20 @@ class WaterHost internal constructor() {
     fun styleGlass(id: Int, s: GlassStyle) {
         val g = sim.glass
         if (id !in 0 until g.n) return
-        g.corner[id] = s.corner.value * dp; g.bevel[id] = s.bevel.value * dp
-        g.group[id] = s.group.coerceIn(0, 3); g.lens[id] = s.lens; g.frost[id] = s.frost
+        val corner = s.corner.value * dp; val bevel = s.bevel.value * dp; val group = s.group.coerceIn(0, 3)
+        val outset = s.outset.value * dp
+        // Called from every recomposition of a GlassBox (rememberGlass's SideEffect): only a real
+        // change asks for frames, so a recomposing screen does not keep the water awake.
+        if (g.corner[id] == corner && g.bevel[id] == bevel && g.group[id] == group && g.lens[id] == s.lens &&
+            g.frost[id] == s.frost && g.floats[id] == s.floats && g.stir[id] == s.stir && g.k[id] == s.stiffness &&
+            g.zeta[id] == s.damping && g.rigid[id] == s.rigid && g.growIn[id] == s.growIn && anchorOutset[id] == outset
+        ) return
+        g.corner[id] = corner; g.bevel[id] = bevel
+        g.group[id] = group; g.lens[id] = s.lens; g.frost[id] = s.frost
         g.floats[id] = s.floats; g.stir[id] = s.stir
         g.k[id] = s.stiffness; g.zeta[id] = s.damping
         g.rigid[id] = s.rigid; g.growIn[id] = s.growIn
-        anchorOutset[id] = s.outset.value * dp
+        anchorOutset[id] = outset
         wake()
     }
 
@@ -285,22 +318,38 @@ class WaterHost internal constructor() {
     // ================================================================ internals
 
     internal fun anchor(id: Int, c: LayoutCoordinates, alpha: (() -> Float)?) {
-        if (id !in 0 until sim.glass.n) return
+        val g = sim.glass
+        if (id !in 0 until g.n) return
+        val same = anchors[id] === c && alphaOf[id] === alpha
         anchors[id] = c; alphaOf[id] = alpha
+        // onGloballyPositioned fires for every layout pass and layer move up the tree; only a real
+        // change of this body's bounds (or a new anchor) needs frames. measure() reads them per frame.
+        if (same && g.used[id]) {
+            val r = root?.takeIf { it.isAttached }
+            if (r != null && c.isAttached) {
+                val b = r.localBoundingBoxOf(c, clipBounds = false)
+                val o = anchorOutset[id]
+                val a = (alpha?.invoke() ?: 1f).coerceIn(0f, 1f)
+                if (abs(b.center.x - g.tx[id]) < 0.25f && abs(b.center.y - g.ty[id]) < 0.25f &&
+                    abs(b.width / 2f + o - g.tw[id]) < 0.25f && abs(b.height / 2f + o - g.th[id]) < 0.25f &&
+                    abs(a - g.tAlpha[id]) < 0.001f
+                ) return
+            }
+        }
         wake()
     }
 
     internal fun setLevel(l: Float, chg: Boolean) {
         charging = chg
-        if (abs(l - level) > 0.001f) { level = l; staticDirty = true; stir(); wake() }
+        if (abs(l - level) > 0.001f) { level = l; staticDirty = true; stir(); wakeQuiet() }
     }
 
     internal fun onGravity(x: Float, y: Float) {
         rawGx = -x; rawGy = y
         val plane = sqrt(rawGx * rawGx + rawGy * rawGy)
         val ts = if (plane > 2.5f && rawGy > 0.8f) (rawGx / rawGy).coerceIn(-0.7f, 0.7f) else 0f
-        if (abs(ts - lastWakeTilt) > 0.03f) { lastWakeTilt = ts; stir(); wake() }
-        else if (abs(y - lastWakeGy) > 0.35f) { lastWakeGy = y; stir(); wake() }
+        if (abs(ts - lastWakeTilt) > 0.03f) { lastWakeTilt = ts; stir(); wakeQuiet() }
+        else if (abs(y - lastWakeGy) > 0.35f) { lastWakeGy = y; stir(); wakeQuiet() }
     }
 
     internal fun fingerDown(x: Float, y: Float) {
@@ -378,20 +427,39 @@ class WaterHost internal constructor() {
     }
 
     internal fun wantsFrames(now: Long): Boolean {
-        if (w <= 0f || oneFrame) return true
-        if (fingers > 0 || now < fullUntil) return true
-        if (sim.dropsAlive > 0 || sim.ringsAlive > 0) return true
-        if (energy() > REST_ENERGY) return true
-        // A short shimmer after the last touch (capped at 30 fps), then the frame holds.
-        return now - lastStir < SHIMMER_MS
+        reason = when {
+            w <= 0f || oneFrame -> 1
+            fingers > 0 -> 2
+            now < fullUntil -> 3
+            sim.dropsAlive > 0 || sim.ringsAlive > 0 -> 4
+            energy() > REST_ENERGY -> 5
+            // A short shimmer after the last touch (capped at 30 fps), then the frame holds.
+            now - lastStir < SHIMMER_MS -> 6
+            else -> 0
+        }
+        return reason != 0
     }
 
+    /** Display rate: a finger, a burst, drops or rings, real motion, or anything else changed just now. */
     internal fun fullRate(now: Long): Boolean =
-        fingers > 0 || now < fullUntil || sim.dropsAlive > 0 || sim.ringsAlive > 0 || energy() > FULL_ENERGY
+        fingers > 0 || now < fullUntil || now - lastWake < WAKE_FULL_MS || sim.dropsAlive > 0 || sim.ringsAlive > 0 ||
+            energy() > FULL_ENERGY
 
     /** One displayed frame: fixed 120 Hz substeps; [dt] already clamped. */
     internal fun frame(dt: Float) {
         oneFrame = false
+        val traced = android.os.Build.VERSION.SDK_INT >= 29 && android.os.Trace.isEnabled()
+        if (traced) {
+            android.os.Trace.beginSection("Water.frame")
+            android.os.Trace.setCounter("water.reason", reason.toLong())
+            android.os.Trace.setCounter("water.e.sim", (sim.energy() * 10f).toLong())
+            android.os.Trace.setCounter("water.e.glass", (sim.glass.energy(dp) * 10f).toLong())
+            android.os.Trace.setCounter("water.e.par", (parallaxEnergy() * 10f).toLong())
+        }
+        try { stepFrame(dt) } finally { if (traced) android.os.Trace.endSection() }
+    }
+
+    private fun stepFrame(dt: Float) {
         measure()
         if (w <= 0f) return
         acc += dt
@@ -406,6 +474,7 @@ class WaterHost internal constructor() {
             stepParallax()
         }
         if (steps == 8) acc = 0f
+        if (abs(parX - pubParX) > 0.001f || abs(parY - pubParY) > 0.001f) { pubParX = parX; pubParY = parY; parTick++ }
         dispatch()
     }
 
@@ -449,6 +518,9 @@ class WaterHost internal constructor() {
         const val BOTTOM = 0.93f
         private const val REST_ENERGY = 1.2f
         private const val FULL_ENERGY = 10f
-        private const val SHIMMER_MS = 6000L
+        /** The idle shimmer after the last stir (at 30 fps), then the loop holds. */
+        private const val SHIMMER_MS = 3000L
+        /** After a [wake] (a page scroll, a glass target moving) the water keeps the display rate this long. */
+        private const val WAKE_FULL_MS = 160L
     }
 }

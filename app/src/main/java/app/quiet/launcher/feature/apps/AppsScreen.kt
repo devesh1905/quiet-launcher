@@ -59,6 +59,10 @@ import app.quiet.launcher.feature.underwater.engine.GlassStyle
 import app.quiet.launcher.feature.underwater.engine.LocalWater
 import app.quiet.launcher.feature.underwater.engine.WaterHost
 import app.quiet.launcher.feature.underwater.engine.rememberGlass
+import app.quiet.launcher.feature.underwater.GlassKeyboard
+import app.quiet.launcher.feature.underwater.GlassKeyboardHeight
+import app.quiet.launcher.feature.underwater.GlassKeysField
+import app.quiet.launcher.feature.underwater.rememberTouchExploration
 import app.quiet.launcher.feature.underwater.rigidGlass
 import app.quiet.launcher.feature.underwater.smooth
 import app.quiet.launcher.feature.underwater.worldRect
@@ -105,25 +109,45 @@ fun AppsScreen(
     val gesture by remember { GesturePrefs.get(ctx) }.state.collectAsStateWithLifecycle()
     val inkOn = gesture.ink && !Q.reducedMotion
     InkHost()
+    // Quiet Underwater: the glass keyboard instead of the system one. TalkBack, or its keyboard key,
+    // brings the system keyboard back (the key: until the page is left).
+    val waterOn = LocalWater.current != null
+    val talkBack = if (waterOn) rememberTouchExploration() else false
+    var sysKeys by remember { mutableStateOf(false) }
+    val glassKeys = waterOn && !talkBack && !sysKeys
+    var keysOpen by remember { mutableStateOf(false) }
     BackHandler { query = ""; keyboard?.hide(); onBack() }
+    BackHandler(enabled = keysOpen) { keysOpen = false }
 
     // Focus only while this page is in front: focusing off-screen would pull the pager here.
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     // Put the keyboard away when the user starts browsing instead of typing.
-    fun dismissKeyboard() { keyboard?.hide(); focusManager.clearFocus() }
+    fun dismissKeyboard() { keyboard?.hide(); focusManager.clearFocus(); keysOpen = false }
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }.collect { scrolling -> if (scrolling) dismissKeyboard() }
     }
     LaunchedEffect(isActive, focusSearch) {
         if (isActive && (focusSearch || settings.autoKeyboard)) {
-            runCatching { focus.requestFocus() }
-            keyboard?.show()
+            if (glassKeys) keysOpen = true
+            else {
+                runCatching { focus.requestFocus() }
+                keyboard?.show()
+            }
         } else if (!isActive) {
             query = ""
             focusManager.clearFocus()
             keyboard?.hide()
+            keysOpen = false; sysKeys = false
         }
         if (focusSearch) onFocusConsumed()
+    }
+    // The glass keyboard's keyboard key: the field is composed on the next frame, then focused.
+    LaunchedEffect(sysKeys) {
+        if (sysKeys) {
+            androidx.compose.runtime.withFrameNanos { }
+            runCatching { focus.requestFocus() }
+            keyboard?.show()
+        }
     }
 
     val visible = remember(apps) { apps.filter { !it.hidden } }
@@ -174,12 +198,14 @@ fun AppsScreen(
                 } else Modifier
             )
             .windowInsetsPadding(WindowInsets.systemBars).imePadding()
+            .then(if (water != null && keysOpen) Modifier.padding(bottom = GlassKeyboardHeight) else Modifier)
     ) {
         if (water != null) GlassSearchBar(
             host = water, glassOn = onScreen, pageAlpha = pageAlpha,
             query = query, onQuery = { query = it }, focus = focus,
+            glassKeys = glassKeys, keysOpen = keysOpen,
             onGo = { filtered.firstOrNull()?.let { container.apps.launch(it.key); query = "" } },
-            onTap = { runCatching { focus.requestFocus() }; keyboard?.show() },
+            onTap = { if (glassKeys) keysOpen = true else { runCatching { focus.requestFocus() }; keyboard?.show() } },
             onSettings = { dismissKeyboard(); onOpenSettings() },
         ) else
         // Search field: 14 dp radius, control edge at 3:1 (DESIGN-NOTES §3).
@@ -235,7 +261,7 @@ fun AppsScreen(
                                 .height(50.dp)
                                 .inkLabel(ink)
                                 .pressable(onLongPress = { onAppLongPress(r.app) }) {
-                                    Ink.open(view, r.app.key, ink, inkOn, scope); query = ""
+                                    Ink.open(view, r.app.key, ink, inkOn, scope); query = ""; keysOpen = false
                                 },
                             contentAlignment = Alignment.CenterStart,
                         ) {
@@ -274,6 +300,21 @@ fun AppsScreen(
             }
         }
     }
+
+    // Underwater: the glass keyboard (drawn above the world; it follows the page's slide and fade).
+    if (water != null) GlassKeyboard(
+        host = water,
+        open = keysOpen && glassKeys && onScreen,
+        alpha = pageAlpha,
+        shiftX = { pageK[0]?.takeIf { it.isAttached }?.let { water.toWorld(it).x } ?: 0f },
+        onType = { ch -> query += ch },
+        onUndoType = { query = query.dropLast(1) },
+        onDelete = { query = query.dropLast(1) },
+        onGo = { filtered.firstOrNull()?.let { container.apps.launch(it.key); query = ""; keysOpen = false } },
+        onVoice = { query = it },
+        onSystemKeyboard = { keysOpen = false; sysKeys = true },
+        onDismiss = { keysOpen = false },
+    )
 }
 
 // ---------------------------------------------------------------- Quiet Underwater: search on glass
@@ -295,6 +336,7 @@ private val SlabSmoke = Color(0x80080808)
 private fun GlassSearchBar(
     host: WaterHost, glassOn: Boolean, pageAlpha: () -> Float,
     query: String, onQuery: (String) -> Unit, focus: FocusRequester,
+    glassKeys: Boolean, keysOpen: Boolean,
     onGo: () -> Unit, onTap: () -> Unit, onSettings: () -> Unit,
 ) {
     val c = Q.colors
@@ -303,8 +345,19 @@ private fun GlassSearchBar(
     val measurer = rememberTextMeasurer()
     val id = if (glassOn) rememberGlass(host, PillGlass) else -1
     val pillK = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    var focused by remember { mutableStateOf(false) }
+    var fieldFocused by remember { mutableStateOf(false) }
+    val focused = fieldFocused || (glassKeys && keysOpen)
     val density = androidx.compose.ui.platform.LocalDensity.current
+    // Glass keyboard: search opens with the same ring of refraction from the pill.
+    LaunchedEffect(glassKeys && keysOpen) {
+        if (glassKeys && keysOpen) {
+            val k = pillK[0]
+            if (k != null && k.isAttached) {
+                val r = host.worldRect(k)
+                host.ring((r[0] + r[2]) / 2f, (r[1] + r[3]) / 2f, 1f)
+            }
+        }
+    }
 
     Row(
         Modifier.padding(horizontal = 24.dp, vertical = 16.dp).fillMaxWidth().height(52.dp),
@@ -349,7 +402,8 @@ private fun GlassSearchBar(
                     Spacer(Modifier.width(12.dp))
                     Box(Modifier.weight(1f)) {
                         if (query.isEmpty()) BasicText("Search", style = style.copy(color = c.muted), maxLines = 1)
-                        BasicTextField(
+                        if (glassKeys) GlassKeysField(query, keysOpen, style.copy(color = c.ink), c.ink)
+                        else BasicTextField(
                             value = query, onValueChange = onQuery, singleLine = true,
                             textStyle = style.copy(color = c.ink), cursorBrush = SolidColor(c.ink),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
@@ -358,7 +412,7 @@ private fun GlassSearchBar(
                                 .fillMaxWidth()
                                 .focusRequester(focus)
                                 .onFocusChanged { f ->
-                                    if (f.isFocused && !focused) {
+                                    if (f.isFocused && !fieldFocused) {
                                         // Search opens: a ring of refraction runs out from the pill.
                                         val k = pillK[0]
                                         if (k != null && k.isAttached) {
@@ -366,7 +420,7 @@ private fun GlassSearchBar(
                                             host.ring((r[0] + r[2]) / 2f, (r[1] + r[3]) / 2f, 1f)
                                         }
                                     }
-                                    focused = f.isFocused
+                                    fieldFocused = f.isFocused
                                 },
                         )
                     }

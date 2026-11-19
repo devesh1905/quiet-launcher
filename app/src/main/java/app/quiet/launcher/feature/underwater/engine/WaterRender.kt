@@ -44,6 +44,8 @@ internal class WaterGpu {
     private var hf: FloatTex? = null
     private var hfShader: Shader? = null
     private var hfZero = false
+    /** Rows of the ripple texture above this are known to hold the neutral value (0.5). */
+    private var hfNeutralTo = 0
     private val drops = FloatArray(WaterSim.MAX_DROPS * 4)
     private val rings = FloatArray(WaterSim.MAX_RINGS * 4)
     private val ga = FloatArray(WaterSim.MAX_GLASS * 4)
@@ -52,20 +54,41 @@ internal class WaterGpu {
     private val gd = FloatArray(WaterSim.MAX_GLASS * 4)
 
     fun effect(c: WaterHost): RenderEffect? {
+        val traced = Build.VERSION.SDK_INT >= 29 && android.os.Trace.isEnabled()
+        if (traced) android.os.Trace.beginSection("Water.effect")
+        try { return build(c) } finally { if (traced) android.os.Trace.endSection() }
+    }
+
+    private fun build(c: WaterHost): RenderEffect? {
         val sh = shader ?: return null
         val s = c.sim
         val g = s.grid ?: return null
         if (c.w <= 0f) return null
         val dp = c.dp
         val amp = 200f * dp
-        for (i in 0 until 96) surfTex.put(i, 0.5f + s.surf.h[i] / amp)
+        var vMax = 0f
+        for (i in 0 until 96) {
+            val v = (0.5f + s.surf.h[i] / amp).coerceIn(0f, 1f)
+            if (v > vMax) vMax = v
+            surfTex.put(i, v)
+        }
+        // The highest the surface reaches anywhere (the texture is a linear blend of these samples),
+        // less 3 px (the shader's own band) and 2 px for the half-float storage: above it, no water.
+        sh.setFloatUniform("uTopY", s.line[0] - (vMax - 0.5f) * amp - 5f)
         sh.setInputShader("uSurf", surfTex.upload())
         // The ripple field: gradient and laplacian per cell. Skipped while the grid rests (one zero upload).
-        val t = hf?.takeIf { it.w == g.gw && it.h == g.gh } ?: FloatTex(g.gw, g.gh).also { hf = it; hfShader = null; hfZero = false }
+        val t = hf?.takeIf { it.w == g.gw && it.h == g.gh } ?: FloatTex(g.gw, g.gh).also { hf = it; hfShader = null; hfZero = false; hfNeutralTo = 0 }
         if (s.gridLive || hfShader == null || !hfZero) {
             val gain = 0.07f
             val gw = g.gw; val gh = g.gh; val hh = g.h
-            for (y in 0 until gh) {
+            // The grid is flat (0) above the waterline, so only the rows from one above the highest
+            // surface cell down are computed; the rows above are written neutral once.
+            var minTop = gh
+            for (x in 0 until gw) if (g.top[x] < minTop) minTop = g.top[x]
+            val start = (minTop - 1).coerceIn(0, gh)
+            if (start > hfNeutralTo) for (i in hfNeutralTo * gw until start * gw) t.put(i, 0.5f, 0.5f, 0.5f)
+            hfNeutralTo = start
+            for (y in start until gh) {
                 val row = y * gw
                 for (x in 0 until gw) {
                     val i = row + x
@@ -181,7 +204,7 @@ fun Modifier.waterWorld(host: WaterHost?): Modifier {
         }
         .graphicsLayer {
             host.tick
-            renderEffect = if (waterBroken) null else try {
+            renderEffect = if (waterBroken || WaterDebug.hide and 4 != 0) null else try {
                 host.gpuOrNull()?.effect(host)?.asComposeRenderEffect()
             } catch (e: RuntimeException) {
                 Log.w(WaterGpu.TAG, "water failed; classic look", e); waterBroken = true; null
@@ -210,48 +233,88 @@ fun WaterEngine(host: WaterHost, level: Float, charging: Boolean, palette: IntAr
         host.still = still
     }
 
-    DisposableEffect(enabled && !still) {
-        if (!(enabled && !still)) return@DisposableEffect onDispose { }
+    // Tilt. While the water moves: the fused gravity sensor (smooth, uses the gyro) at the UI rate.
+    // While it holds: the plain accelerometer at 5 Hz, which costs next to nothing and is enough to
+    // notice the phone being tilted or picked up (that wakes the loop, which switches back).
+    val sensing = enabled && !still
+    val fast = host.awake
+    DisposableEffect(sensing, fast) {
+        if (!sensing) return@DisposableEffect onDispose { }
         val sm = ctx.getSystemService(SensorManager::class.java)
-        val sensor = sm?.getDefaultSensor(Sensor.TYPE_GRAVITY) ?: sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        val l = object : SensorEventListener {
+        val accel = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val sensor = (if (fast) sm?.getDefaultSensor(Sensor.TYPE_GRAVITY) else null) ?: accel
+        val l = if (sensor === accel && !fast) object : SensorEventListener {
+            // Low-pass the raw accelerometer toward gravity, so hand jitter does not wake the water.
+            private var fx = Float.NaN; private var fy = 0f
+            override fun onSensorChanged(e: SensorEvent) {
+                if (fx.isNaN()) { fx = e.values[0]; fy = e.values[1] } else { fx += (e.values[0] - fx) * 0.5f; fy += (e.values[1] - fy) * 0.5f }
+                host.onGravity(fx, fy)
+            }
+            override fun onAccuracyChanged(s: Sensor?, a: Int) {}
+        } else object : SensorEventListener {
             override fun onSensorChanged(e: SensorEvent) { host.onGravity(e.values[0], e.values[1]) }
             override fun onAccuracyChanged(s: Sensor?, a: Int) {}
         }
-        if (sensor != null) sm.registerListener(l, sensor, SensorManager.SENSOR_DELAY_UI)
+        if (sensor != null) sm.registerListener(l, sensor, if (fast) SensorManager.SENSOR_DELAY_UI else 200_000)
         onDispose { sm?.unregisterListener(l) }
     }
 
+    val view = androidx.compose.ui.platform.LocalView.current
     LaunchedEffect(enabled, still) {
         host.running = enabled && !still
         host.releaseFingers()
-        if (!enabled) return@LaunchedEffect
+        if (!enabled) { host.awake = false; return@LaunchedEffect }
         if (still) {
+            host.awake = false
             while (true) {
                 if (host.takeStaticDirty()) androidx.compose.runtime.withFrameNanos { host.drawStatic() }
                 host.wakeCh.receive()
             }
         }
         var last = 0L
-        while (true) {
-            val now = SystemClock.uptimeMillis()
-            if (!host.wantsFrames(now)) {
-                // Hold: no frames, no timers. A touch, tilt, level change or event wakes it.
-                last = 0L
-                host.wakeCh.receive()
-                continue
+        var slow = false
+        try {
+            while (true) {
+                val now = SystemClock.uptimeMillis()
+                if (!host.wantsFrames(now)) {
+                    // Hold: no frames, no timers. A touch, tilt, level change or event wakes it.
+                    last = 0L
+                    if (slow) { slow = false; voteFrameRate(view, false) }
+                    host.awake = false
+                    host.wakeCh.receive()
+                    continue
+                }
+                // A lone redraw (a wake with nothing moving) keeps the low-power sensor.
+                if (host.reason != 1) host.awake = true
+                androidx.compose.runtime.withFrameNanos { t ->
+                    val dt = if (last == 0L) 1f / 60f else ((t - last) / 1e9f).coerceIn(0.001f, 0.05f)
+                    last = t
+                    host.frame(dt)
+                    host.tick = t
+                }
+                // 30 fps for the idle shimmer (and the display may drop its rate); a wake (touch) cuts the wait short.
+                val full = host.fullRate(SystemClock.uptimeMillis())
+                if (full == slow) { slow = !full; voteFrameRate(view, slow) }
+                if (!full) withTimeoutOrNull(24) { host.wakeCh.receive() }
             }
-            androidx.compose.runtime.withFrameNanos { t ->
-                val dt = if (last == 0L) 1f / 60f else ((t - last) / 1e9f).coerceIn(0.001f, 0.05f)
-                last = t
-                host.frame(dt)
-                host.tick = t
-            }
-            // 30 fps for the idle shimmer; a wake (touch) cuts the wait short.
-            if (!host.fullRate(SystemClock.uptimeMillis())) withTimeoutOrNull(24) { host.wakeCh.receive() }
+        } finally {
+            if (slow) voteFrameRate(view, false)
+            host.awake = false
         }
     }
     DisposableEffect(Unit) { onDispose { host.running = false } }
+}
+
+/**
+ * Android 15+: while only the slow shimmer draws, tell the system this view is fine at a low rate,
+ * so the panel can leave 120 Hz; back to no preference for anything that moves. Touch and other
+ * views still raise it.
+ */
+private fun voteFrameRate(view: android.view.View, slow: Boolean) {
+    if (Build.VERSION.SDK_INT < 35) return
+    try {
+        view.requestedFrameRate = if (slow) android.view.View.REQUESTED_FRAME_RATE_CATEGORY_LOW else android.view.View.REQUESTED_FRAME_RATE_CATEGORY_DEFAULT
+    } catch (_: Throwable) { }
 }
 
 /**

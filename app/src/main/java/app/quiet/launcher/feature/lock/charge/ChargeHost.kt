@@ -11,7 +11,6 @@ import android.hardware.SensorManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.SystemClock
-import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +34,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import app.quiet.launcher.core.model.ChargeAnim
+import app.quiet.launcher.core.platform.ChargeRate
 import app.quiet.launcher.feature.player.tonePalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -75,7 +75,6 @@ class ChargeHost internal constructor() {
 
     /** Starts the Flood show-off: water to the current battery level, drains by itself after ~20 s. */
     fun startDemo(): Boolean {
-        Log.d("QuietCharge", "startDemo demo=$demo still=$still plugged=$plugged style=$style shown=$shown")
         if (demo || still || Build.VERSION.SDK_INT < 33) return false
         if (plugged && style == ChargeAnim.FLOOD) { flood.ringAt(); stir(); wake = true; return false }
         demoStarted = SystemClock.uptimeMillis()
@@ -83,6 +82,9 @@ class ChargeHost internal constructor() {
         demo = true   // the engine restarts with FLOOD and begin() runs the plug-in moment
         return true
     }
+
+    /** Stops the show-off at once (the Water theme took over: it has its own). */
+    internal fun cancelDemo() { if (demo) { demo = false; demoEnd = 0L } }
 
     /** Drains the show-off water early (a double tap). */
     fun endDemo() {
@@ -98,8 +100,6 @@ class ChargeHost internal constructor() {
     internal var level = 0.5f
     private var fastTarget = 0f
     internal var fast = 0f
-    internal var watts = 0f
-    internal var amps = 0f
     private var rawGx = 0f
     private var rawGy = 1f
     internal var gx = 0f
@@ -152,7 +152,6 @@ class ChargeHost internal constructor() {
     private var beatArmed = true
     private var lastOrbX = 0f
     internal var time = 0f
-    private var logAt = 0L
 
     // ---------------------------------------------------------------- inputs
 
@@ -160,10 +159,6 @@ class ChargeHost internal constructor() {
         val lv = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
         val sc = i.getIntExtra(BatteryManager.EXTRA_SCALE, 100).coerceAtLeast(1)
         if (lv >= 0) updateLevel(lv / sc.toFloat())
-        // Plug wattage, where the charger reports it (hidden extras on most phones).
-        val ma = i.getIntExtra("max_charging_current", 0)
-        val mv = i.getIntExtra("max_charging_voltage", 0)
-        if (ma > 0) watts = ma / 1e6f * (if (mv > 0) mv / 1e6f else 5f)
         val p = i.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
         setPlugged(p, wakeUp = haveBattery)
         haveBattery = true
@@ -180,7 +175,15 @@ class ChargeHost internal constructor() {
 
     internal fun setPlugged(p: Boolean, wakeUp: Boolean) {
         if (p == plugged && haveBattery) return
-        if (demo && haveBattery) { plugged = p; demo = false; return }   // a real charger takes over
+        if (demo) {
+            // The show-off owns the water. The first (sticky) reading arrives just after it starts, when
+            // the charging style was off and the receiver only now registered: record it, never drain the
+            // show for "not plugged". A charger plugged in during the show takes over.
+            val takeOver = p && haveBattery
+            plugged = p
+            if (takeOver) demo = false
+            return
+        }
         plugged = p
         staticDirty = true
         if (still) return
@@ -211,13 +214,17 @@ class ChargeHost internal constructor() {
         fullUntil = SystemClock.uptimeMillis() + if (wakeUp) 3000L else 1200L
     }
 
-    /** Charge rate from the instantaneous current (µA on most phones, mA on some). */
-    internal fun onCurrent(raw: Int) {
-        if (raw == Int.MIN_VALUE || raw == 0) return
-        val a = abs(raw).let { if (it < 20_000) it / 1000f else it / 1_000_000f }
-        amps = a
-        val isFast = plugged && (a > 1.6f || watts >= 15f)
-        fastTarget = if (isFast) 1f else 0f
+    /**
+     * The charge rate's pace for the animations, from the shared meter ([ChargeRate], the same tier the
+     * words under the clock show): slow and full are calm, rapid runs the water hardest.
+     */
+    internal fun setTier(t: ChargeRate.Tier) {
+        fastTarget = when (t) {
+            ChargeRate.Tier.RAPID -> 1f
+            ChargeRate.Tier.FAST -> 0.8f
+            ChargeRate.Tier.NORMAL -> 0.35f
+            else -> 0f
+        }
     }
 
     internal fun onGravity(x: Float, y: Float) {
@@ -250,7 +257,6 @@ class ChargeHost internal constructor() {
         flood.reset(); glass.reset(); thread.reset(); clock.reset()
         acc = 0f; wake = true; staticDirty = true
         fast = fastTarget
-        Log.d("QuietCharge", "begin s=$s still=$still demo=$demo plugged=$plugged w=$w")
         if (demo) {
             if (s == ChargeAnim.FLOOD && !still) { startSims(true); stir(); fullUntil = SystemClock.uptimeMillis() + 3000L }
             else demo = false
@@ -357,7 +363,7 @@ class ChargeHost internal constructor() {
     internal fun frame(dt: Float) {
         measure()
         if (w <= 0f) return
-        if (pendingStart != 0 && plugged) startSims(pendingStart == 2)
+        if (pendingStart != 0 && (plugged || demo)) startSims(pendingStart == 2)
         val now = SystemClock.uptimeMillis()
         val calm = now - lastStir > 12_000L
         fast += (fastTarget - fast) * min(1f, dt / 4f)
@@ -410,10 +416,6 @@ class ChargeHost internal constructor() {
             if (!flood.active && now - demoStarted > 800L) demo = false
         }
         updateShown()
-        if (now > logAt) {
-            logAt = now + 2000L
-            Log.d("QuietCharge", "style=$style shown=$shown plugged=$plugged level=$level fast=${"%.2f".format(fast)} A=${"%.2f".format(amps)} W=${"%.1f".format(watts)} tilt=${"%.2f".format(tilt)} energy=${"%.2f".format(energy())} full=${fullRate()}")
-        }
     }
 
     /** Reduced motion / battery saver: one settled frame of the same idea. */
@@ -453,7 +455,7 @@ class ChargeHost internal constructor() {
  * water still moves; otherwise the frame holds until the level, tilt or a touch changes it).
  */
 @Composable
-fun ChargeEngine(host: ChargeHost, style: ChargeAnim, reduced: Boolean, playing: Boolean, palette: IntArray?, ringTop: Float, ringR: Float = 0f) {
+fun ChargeEngine(host: ChargeHost, style: ChargeAnim, reduced: Boolean, playing: Boolean, palette: IntArray?, ringTop: Float, ringR: Float = 0f, tier: ChargeRate.Tier = ChargeRate.Tier.NONE) {
     val ctx = LocalContext.current
     val density = LocalDensity.current.density
     val resumed = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value.isAtLeast(Lifecycle.State.RESUMED)
@@ -461,7 +463,7 @@ fun ChargeEngine(host: ChargeHost, style: ChargeAnim, reduced: Boolean, playing:
     val supported = Build.VERSION.SDK_INT >= 33
     val eff = if (host.demo) ChargeAnim.FLOOD else style
     val enabled = supported && eff != ChargeAnim.OFF && resumed
-    val still = reduced || powerSave
+    val still = reduced || powerSave || app.quiet.launcher.feature.underwater.engine.WaterDebug.forceStill
     host.playing = playing
     host.dp = density
     host.ringTop = ringTop
@@ -490,15 +492,8 @@ fun ChargeEngine(host: ChargeHost, style: ChargeAnim, reduced: Boolean, playing:
         onDispose { runCatching { ctx.unregisterReceiver(rx) } }
     }
 
-    // Charge rate: the current's magnitude, polled slowly while plugged and visible.
-    LaunchedEffect(enabled) {
-        if (!enabled) return@LaunchedEffect
-        val bm = ctx.getSystemService(BatteryManager::class.java) ?: return@LaunchedEffect
-        while (true) {
-            if (host.plugged) host.onCurrent(runCatching { bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW) }.getOrDefault(0))
-            delay(2000)
-        }
-    }
+    // Charge rate: the shared meter's tier (LockRoot samples it while plugged in and in front).
+    SideEffect { host.setTier(tier) }
 
     // Tilt: gravity (or the accelerometer), only while an animation is on screen.
     val sensorOn = enabled && !still && host.shown != ChargeAnim.OFF

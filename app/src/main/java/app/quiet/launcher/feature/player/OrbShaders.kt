@@ -119,17 +119,32 @@ float3 field(float2 p){
   float3 col=uAc*wa+uLt*wb*.8+uMd*wc+uDk*.6+float3(.02,.022,.03);
   return col*(.92+.08*sin((p.x+p.y)*9.+t*2.));
 }
+// The trailing droplets are small copies of the body: each pixel gets the frame of the part it
+// belongs to (soft weights, so the necks blend), in body radii, and that part's size. Without it
+// the droplets looked into the dark edge of the field, far from the body, and their domes never
+// reached full height, so they read as dark beads instead of glass.
+float3 dropLocal(float2 p){
+  float r=max((1.+uBeat*.06)*uPress*(1.-uPaused*.08),.05);
+  float2 c1=(uT1-uC)/uR; float2 c2=(uT2-uC)/uR;
+  float dB=length(p)-r; float d1=length(p-c1)-.46*r; float d2=length(p-c2)-.26*r;
+  float m=min(dB,min(d1,d2));
+  float w0=exp(-(dB-m)*9.); float w1=exp(-(d1-m)*9.); float w2=exp(-(d2-m)*9.);
+  float ws=w0+w1+w2; w0/=ws; w1/=ws; w2/=ws;
+  float2 L=w0*p+w1*(p-c1)/.46+w2*(p-c2)/.26;
+  return float3(L, w0+w1*.46+w2*.26);
+}
 half4 main(float2 xy){
   float2 p=(xy-uC)/uR;
   float d=dropShape(p,.55);
   float px=1.6/uR;
   float inside=1.-smoothstep(-px,px,d);
   float2 nd=dropNormalXY(p,.55);
-  float s=clamp(-d/.62,0.,1.);
+  float3 lp=dropLocal(p);
+  float s=clamp(-d/(.62*lp.z),0.,1.);
   float h=sqrt(1.-(1.-s)*(1.-s));
   float3 n=normalize(float3(nd*(1.-h),h+.04));
   float2 off=-n.xy*.85;
-  float3 col=float3(field(p+off).r, field(p+off*1.1).g, field(p+off*1.22).b)*1.1;
+  float3 col=float3(field(lp.xy+off).r, field(lp.xy+off*1.1).g, field(lp.xy+off*1.22).b)*1.1;
   col*=1.-uPaused*.35;
   col+=pow(1.-n.z,3.)*mix(float3(1.),uLt,.4)*.6;
   float3 H=normalize(float3(-.45,-.6,.65)+float3(0.,0.,1.));

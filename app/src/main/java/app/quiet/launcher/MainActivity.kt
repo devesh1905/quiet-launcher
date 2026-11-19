@@ -148,12 +148,16 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
     val pages: @Composable () -> Unit = {
         HorizontalPager(state = pager, beyondViewportPageCount = 1, modifier = Modifier.fillMaxSize(), userScrollEnabled = !playerOpen) { page ->
             // Pages slide with a gentle depth and fade so Home and the list feel layered.
-            val offset = (pager.currentPage - page) + pager.currentPageOffsetFraction
             Box(Modifier.fillMaxSize().graphicsLayer {
+                // Read here (draw phase), not in composition: the offset changes on every swipe frame.
+                val offset = (pager.currentPage - page) + pager.currentPageOffsetFraction
                 val o = offset.absoluteValue.coerceIn(0f, 1f)
                 // Underwater: a page fully out of view draws nothing (alpha 0 is never a layer), so a
                 // neighbour that redraws every water frame (the apps slab) costs no offscreen pass.
                 alpha = (if (waterOn && o >= 0.999f) 0f else lerp(1f, 0.2f, o)) * pagesFade
+                // Underwater: the fade is applied to each draw (pages are words over the painting, little
+                // overlaps), not through a full-screen offscreen buffer per page on every swipe frame.
+                if (waterOn) compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
                 val s = lerp(1f, 0.96f, o)
                 scaleX = s; scaleY = s
             }) {
@@ -189,8 +193,21 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
 
     // Quiet Underwater: the pages are the world the water and glass bend (null = classic look).
     val water = if (waterOn) app.quiet.launcher.feature.underwater.engine.rememberWaterHost() else null
+    // Underwater: the backdrop is opaque, so neither the window's black nor the root colour is drawn
+    // under it (two full-screen fills a frame less).
+    val activity = ctx as? android.app.Activity
+    DisposableEffect(water != null) {
+        if (water != null) activity?.window?.setBackgroundDrawable(null)
+        onDispose { if (water != null) activity?.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK)) }
+    }
+    // While the player is fully up (its own backdrop covers the screen), the world's painting under it
+    // is not drawn. Uncovered the moment it starts to close.
+    val playerCovers by produceState(false, playerOpen) {
+        value = false
+        if (playerOpen) { kotlinx.coroutines.delay(480); value = true }
+    }
     CompositionLocalProvider(app.quiet.launcher.feature.underwater.engine.LocalWater provides water) {
-    Box(Modifier.fillMaxSize().background(Q.colors.bg)) {
+    Box(if (water != null) Modifier.fillMaxSize() else Modifier.fillMaxSize().background(Q.colors.bg)) {
         if (water != null) {
             val battery by ctx.container.device.battery.collectAsStateWithLifecycle()
             val art by ctx.container.art.today.collectAsStateWithLifecycle()
@@ -206,8 +223,8 @@ private fun LauncherRoot(homeSignal: Int, openNotifications: Int) {
             val top = app.quiet.launcher.feature.underwater.rememberWaterTop()
             CompositionLocalProvider(app.quiet.launcher.feature.underwater.LocalWaterTop provides top) {
                 Box(Modifier.fillMaxSize().waterWorld(water)) {
-                    app.quiet.launcher.feature.underwater.WaterBackdrop(art?.imagePath, swatches)
-                    pages()
+                    app.quiet.launcher.feature.underwater.WaterBackdrop(art?.imagePath, swatches, covered = { playerCovers })
+                    if (app.quiet.launcher.feature.underwater.engine.WaterDebug.hide and 8 == 0) pages()
                 }
                 app.quiet.launcher.feature.underwater.WaterTopLayer(top)
             }

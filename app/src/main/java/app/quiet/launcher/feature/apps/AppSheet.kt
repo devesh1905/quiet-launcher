@@ -45,8 +45,6 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun QuietSheet(visible: Boolean, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    val c = Q.colors
-    val scope = rememberCoroutineScope()
     var heightPx by remember { mutableFloatStateOf(2000f) }
     val offset = remember { Animatable(2000f) }
     var shown by remember { mutableStateOf(false) }
@@ -63,6 +61,26 @@ fun QuietSheet(visible: Boolean, onDismiss: () -> Unit, content: @Composable Col
     }
     if (!shown) return
     BackHandler(onBack = onDismiss)
+    // Quiet Underwater: a sheet opened from inside the world (Home's music and clock sheets) draws on
+    // the layer ABOVE it, so the water never bends it and its own frost never blurs its words; only
+    // its glass body stays in the world, exactly under the sheet's rect. Sheets already above the
+    // world (app actions, overlays) and classic draw in place, unchanged.
+    if (LocalWater.current != null && app.quiet.launcher.feature.underwater.LocalWaterTop.current != null) {
+        val key = remember { Any() }
+        app.quiet.launcher.feature.underwater.OnWaterTop(key, z = 100) {
+            SheetBody(offset, heightPx, { heightPx = it }, onDismiss, content)
+        }
+    } else SheetBody(offset, heightPx, { heightPx = it }, onDismiss, content)
+}
+
+@Composable
+private fun SheetBody(
+    offset: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
+    heightPx: Float, onHeight: (Float) -> Unit,
+    onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit,
+) {
+    val c = Q.colors
+    val scope = rememberCoroutineScope()
     val progress = (1f - offset.value / heightPx).coerceIn(0f, 1f)
     // Quiet Underwater: a slab of frosted glass sliding over the water (null = classic, unchanged).
     val water = LocalWater.current
@@ -79,7 +97,7 @@ fun QuietSheet(visible: Boolean, onDismiss: () -> Unit, content: @Composable Col
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .onSizeChanged { heightPx = it.height.toFloat().coerceAtLeast(1f) }
+                .onSizeChanged { onHeight(it.height.toFloat().coerceAtLeast(1f)) }
                 .offset { IntOffset(0, offset.value.roundToInt()) }
                 .then(
                     if (water != null && glassId >= 0) Modifier.frostedSheet(water, glassId, c.raised)
